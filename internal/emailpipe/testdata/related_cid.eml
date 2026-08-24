@@ -1,0 +1,25 @@
+From: news@example.com
+To: you@example.com
+Subject: With inline logo
+Message-ID: <related-1@example.com>
+Date: Sat, 02 Aug 2026 12:00:00 +0000
+MIME-Version: 1.0
+Content-Type: multipart/related; boundary="rel-boundary"; type="text/html"
+
+--rel-boundary
+Content-Type: text/html; charset=utf-8
+
+<html><body>
+<p>Our logo:</p>
+<img src="cid:logo@example.com" alt="Example logo">
+<p>And a ghost:</p>
+<img src="cid:ghost@nowhere" alt="Ghost logo">
+</body></html>
+--rel-boundary
+Content-Type: image/png
+Content-ID: <logo@example.com>
+Content-Transfer-Encoding: base64
+
+iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8
+z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==
+--rel-boundary--

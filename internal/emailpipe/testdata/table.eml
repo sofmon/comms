@@ -1,0 +1,35 @@
+From: reports@example.com
+To: team@example.com
+Subject: Weekly report
+Message-ID: <table-1@example.com>
+Date: Fri, 01 Aug 2026 09:00:00 -0700
+MIME-Version: 1.0
+Content-Type: multipart/alternative; boundary="alt-boundary"
+
+--alt-boundary
+Content-Type: text/plain; charset=utf-8
+
+Region  Revenue
+North   1200
+South   340
+--alt-boundary
+Content-Type: text/html; charset=utf-8
+
+<html>
+  <head><style>td { color: hotpink; }</style><title>Weekly</title></head>
+  <body>
+    <script>alert("nope")</script>
+    <h1>Weekly report</h1>
+    <p>Numbers are <s>flat</s> <strong>up</strong>.</p>
+    <table>
+      <thead>
+        <tr><th>Region</th><th>Revenue</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>North</td><td>1200</td></tr>
+        <tr><td>South</td><td>340</td></tr>
+      </tbody>
+    </table>
+  </body>
+</html>
+--alt-boundary--

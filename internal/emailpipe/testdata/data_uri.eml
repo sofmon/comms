@@ -1,0 +1,13 @@
+From: newsletter@example.com
+To: you@example.com
+Subject: Pixel newsletter
+Message-ID: <datauri-1@example.com>
+Date: Thu, 07 Aug 2026 07:07:07 +0000
+MIME-Version: 1.0
+Content-Type: text/html; charset=utf-8
+
+<html><body>
+<p>Fresh deals below.</p>
+<img src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" alt="deal banner">
+<p>Bye.</p>
+</body></html>

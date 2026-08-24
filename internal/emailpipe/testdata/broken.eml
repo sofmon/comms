@@ -1,0 +1,19 @@
+From: chaos@example.com
+To: you@example.com
+Subject: Broken MIME
+Message-ID: <broken-1@example.com>
+Date: Thu, 07 Aug 2026 01:02:03 +0000
+MIME-Version: 1.0
+Content-Type: multipart/mixed; boundary="mix-boundary"
+
+--mix-boundary
+Content-Type: text/plain; charset=utf-8
+
+Body before the damaged attachment.
+--mix-boundary
+Content-Type: application/pdf; name="damaged.pdf"
+Content-Disposition: attachment; filename="damaged.pdf"
+Content-Transfer-Encoding: base64
+
+JVBERi0xLjQK!!!not-valid-base64###@@@JSBicm9rZW4K
+--mix-boundary--

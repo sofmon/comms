@@ -1,0 +1,30 @@
+From: Digest Bot <digest@example.com>
+To: Bob <bob@example.com>
+Subject: Weekly digest
+Message-ID: <digest-1@example.com>
+Date: Fri, 07 Aug 2026 14:32:05 +0300
+MIME-Version: 1.0
+Content-Type: multipart/mixed; boundary="mixed-boundary"
+
+--mixed-boundary
+Content-Type: text/html; charset=utf-8
+Content-Disposition: inline
+
+<html><body>
+<p>First section: <b>this is the body</b>.</p>
+</body></html>
+--mixed-boundary
+Content-Type: image/png; name="pic.png"
+Content-Disposition: attachment; filename="pic.png"
+Content-Transfer-Encoding: base64
+
+iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhf
+DwAChwGA60e6kgAAAABJRU5ErkJggg==
+--mixed-boundary
+Content-Type: text/html; charset=utf-8
+Content-Disposition: inline
+
+<html><body>
+<p>Second section: a forwarded digest part that must not vanish.</p>
+</body></html>
+--mixed-boundary--

@@ -1,0 +1,20 @@
+From: scanner@example.com
+To: you@example.com
+Subject: Scan without a name
+Message-ID: <noname-1@example.com>
+Date: Tue, 05 Aug 2026 16:45:00 +0200
+MIME-Version: 1.0
+Content-Type: multipart/mixed; boundary="mix-boundary"
+
+--mix-boundary
+Content-Type: text/plain; charset=utf-8
+
+The scanner forgot to name the file.
+--mix-boundary
+Content-Type: application/octet-stream
+Content-Disposition: attachment
+Content-Transfer-Encoding: base64
+
+iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8
+z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==
+--mix-boundary--

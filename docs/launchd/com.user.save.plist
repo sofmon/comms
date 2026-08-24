@@ -1,0 +1,87 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  launchd USER AGENT for the `save` daemon (macOS autostart).
+
+  This is a LaunchAgent (~/Library/LaunchAgents, loaded into the gui/<uid>
+  domain), NOT a LaunchDaemon (/Library/LaunchDaemons, the system domain).
+  That distinction is load-bearing, for two reasons:
+
+    1. Keychain and OAuth. An agent runs as you, inside your login session,
+       with access to your home directory and your config dir.
+
+    2. Dataless-file materialization. If archive_root lives in iCloud Drive
+       (or any other FileProvider), macOS may EVICT archived files with
+       "Optimize Mac Storage" on, leaving placeholders whose bytes come back
+       only when something reads them. Whether a read is allowed to pull them
+       back is a per-process I/O policy that is INHERITED FROM THE PARENT
+       (see setiopolicy_np(3), IOPOL_TYPE_VFS_MATERIALIZE_DATALESS_FILES).
+       The system default is OFF, and a job in the system domain inherits
+       that: a LaunchDaemon reading an evicted file gets EDEADLK instead of
+       the file's contents. A GUI-session agent inherits the session's
+       policy, which is ON, so reads work. Run save as an agent.
+
+       If you must run it in a context where materialization is off, launchd
+       has an escape hatch — add to this dict:
+
+           <key>MaterializeDatalessFiles</key>
+           <true/>
+
+       …and be aware that it turns every stray read into a network download.
+       `save verify` deliberately goes the other way: it pins its own policy
+       OFF and skips evicted files, unless you ask for them with its
+       "materialize" flag.
+
+  NOTE ON XML COMMENTS: a double hyphen is illegal inside one, which is why
+  command-line flags are named without their leading dashes above.
+
+  KeepAlive restarts the daemon if it ever exits (crash, `save` upgrade,
+  transient failure); combined with save's own crash-safe write ordering
+  and startup healing this is safe at any kill point. The daemon holds a
+  single-instance flock, so a concurrent manual `save sync` is refused
+  rather than corrupting anything.
+
+  Install:
+    1. Edit the ProgramArguments path below to where your `save` binary
+       lives (e.g. /opt/homebrew/bin/save or $HOME/go/bin/save — launchd
+       does not expand ~ or $PATH).
+    2. cp docs/launchd/com.user.save.plist ~/Library/LaunchAgents/
+    3. launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.user.save.plist
+
+  Stop / uninstall:
+    launchctl bootout gui/$(id -u)/com.user.save
+
+  Logs go to ~/Library/Logs/save.log (adjust below; launchd creates the
+  file, but the ~/Library/Logs directory must exist).
+-->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Label</key>
+	<string>com.user.save</string>
+
+	<key>ProgramArguments</key>
+	<array>
+		<string>/usr/local/bin/save</string>
+		<string>run</string>
+	</array>
+
+	<!-- Restart whenever the process exits, for any reason. -->
+	<key>KeepAlive</key>
+	<true/>
+
+	<key>RunAtLoad</key>
+	<true/>
+
+	<!-- Don't restart-loop faster than every 30s if something is badly wrong. -->
+	<key>ThrottleInterval</key>
+	<integer>30</integer>
+
+	<key>ProcessType</key>
+	<string>Background</string>
+
+	<key>StandardOutPath</key>
+	<string>/Users/CHANGE_ME/Library/Logs/save.log</string>
+	<key>StandardErrorPath</key>
+	<string>/Users/CHANGE_ME/Library/Logs/save.log</string>
+</dict>
+</plist>
