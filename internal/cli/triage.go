@@ -96,7 +96,11 @@ func runTriage(out io.Writer, o triageOpts) error {
 	} else if len(removed) > 0 {
 		a.log.Info("removed stray temp files", "count", len(removed))
 	}
-	cls, err := newClassifier(a.cfg, nil)
+	judge, err := llmJudge(a.cfg, false)
+	if err != nil {
+		return err
+	}
+	cls, err := newClassifier(a.cfg, judge)
 	if err != nil {
 		return err
 	}
@@ -140,6 +144,24 @@ func (o triageOpts) validate() error {
 		return errors.New("--explain takes one note and no other selector")
 	}
 	return nil
+}
+
+// llmJudge builds the model layer from [triage.llm] when it is enabled, or
+// returns nil (the layer off). inDaemon says the caller is the after_sync
+// hook, which may only use the model when in_daemon is set too — so a
+// stopped endpoint can never stall the archiver.
+func llmJudge(cfg *config.Config, inDaemon bool) (triage.Judge, error) {
+	l := cfg.Triage.LLM
+	if !l.Enabled || (inDaemon && !l.InDaemon) {
+		return nil, nil
+	}
+	j, err := triage.NewLLMJudge(triage.LLMOptions{
+		BaseURL: l.BaseURL, Model: l.Model, Timeout: l.Timeout.Duration(), MaxBodyChars: l.MaxBodyChars,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return j, nil
 }
 
 // newClassifier builds the pass's classifier from the config: the rules
@@ -617,7 +639,13 @@ func dryRunTriage(out io.Writer, o triageOpts) error {
 	if err != nil {
 		return err
 	}
-	cls, err := newClassifier(cfg, nil)
+	// The dry run consults the model too when it is enabled: the plan is
+	// only worth printing if it is the plan the real run would make.
+	judge, err := llmJudge(cfg, false)
+	if err != nil {
+		return err
+	}
+	cls, err := newClassifier(cfg, judge)
 	if err != nil {
 		return err
 	}
@@ -725,7 +753,11 @@ func explainNote(out io.Writer, notePath string) error {
 	if err != nil {
 		return err
 	}
-	cls, err := newClassifier(cfg, nil)
+	judge, err := llmJudge(cfg, false)
+	if err != nil {
+		return err
+	}
+	cls, err := newClassifier(cfg, judge)
 	if err != nil {
 		return err
 	}

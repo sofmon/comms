@@ -281,6 +281,19 @@ func (d *doctorReport) checkTriage(cfg *config.Config) {
 	if tr.LLM.InDaemon {
 		d.warn("triage.llm.in_daemon = true: the daemon's after_sync pass also calls the model; a stopped endpoint costs one timeout per undecided note per pass")
 	}
+	// The endpoint is probed only because the layer is on: an unreachable
+	// model is not a problem (every failure is undecided, never noise), but
+	// it does mean the layer is doing nothing, which is worth knowing.
+	ctx, cancel := context.WithTimeout(context.Background(), tr.LLM.Timeout.Duration())
+	defer cancel()
+	switch listed, err := triage.PingLLM(ctx, tr.LLM.BaseURL, tr.LLM.Model, nil); {
+	case err != nil:
+		d.warn("model endpoint %s is not answering (%v) — every note the rules leave undecided stays undecided until it is", tr.LLM.BaseURL, err)
+	case listed:
+		d.ok("model endpoint %s answers and lists %q", tr.LLM.BaseURL, tr.LLM.Model)
+	default:
+		d.warn("model endpoint %s answers but does not list %q — check the model name (the endpoint may still serve it under that name)", tr.LLM.BaseURL, tr.LLM.Model)
+	}
 }
 
 // checkPolicyDigest compares the digest the config now produces against the
