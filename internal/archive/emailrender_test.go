@@ -95,6 +95,7 @@ func TestWriteEmailGoldenSkipped(t *testing.T) {
 	want := strings.ReplaceAll(`---
 source: gmail:work
 type: email
+render_version: 2
 account: user@example.com
 account_label: work
 message_id: <pack@example.com>

@@ -761,3 +761,16 @@ func validStrs(in []string) []string {
 	}
 	return out
 }
+
+// validMap is validStr over a map's keys and values; nil stays nil so an
+// omitempty field is still omitted.
+func validMap(in map[string]string) map[string]string {
+	if in == nil {
+		return nil
+	}
+	out := make(map[string]string, len(in))
+	for k, v := range in {
+		out[validStr(k)] = validStr(v)
+	}
+	return out
+}

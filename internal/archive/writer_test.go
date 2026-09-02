@@ -31,6 +31,10 @@ func fullEmailFixture(t *testing.T) (*emailpipe.EmailDoc, EmailMeta, string) {
 		To:        []string{"Bob <bob@example.com>"},
 		Date:      time.Date(2026, 8, 7, 14, 32, 5, 0, time.FixedZone("", 2*3600)),
 		BodyMD:    "Hello **world**.\n",
+		Headers: map[string]string{
+			"precedence": "bulk",
+			"list-id":    "Dev <dev.example.com>",
+		},
 		Files: []emailpipe.File{
 			{Rel: ad + "/invoice.pdf", Content: []byte("pdf-bytes")},
 			{Rel: ad + "/photo 1.png", Content: []byte("png-bytes")},
@@ -72,6 +76,7 @@ func TestWriteEmailGolden(t *testing.T) {
 			want: strings.ReplaceAll(`---
 source: gmail:work
 type: email
+render_version: 2
 account: user@example.com
 account_label: work
 message_id: <m1@example.com>
@@ -87,6 +92,9 @@ subject: 'foo: [bar]'
 labels:
     - INBOX
     - Invoices
+headers:
+    list-id: Dev <dev.example.com>
+    precedence: bulk
 attachments:
     - STEM.d/invoice.pdf
     - STEM.d/photo 1.png
@@ -119,6 +127,7 @@ Hello **world**.
 			want: `---
 source: fastmail:fm
 type: email
+render_version: 2
 account: user@example.com
 account_label: fm
 message_id: ""

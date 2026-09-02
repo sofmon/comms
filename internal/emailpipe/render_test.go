@@ -352,6 +352,7 @@ func TestRenderCorpus(t *testing.T) {
 		"data_uri.eml":       1,
 		"case_collision.eml": 2,
 		"multi_html.eml":     1, // the second html part is recorded, not stored
+		"bulk_headers.eml":   0,
 	}
 	wantSkipped := map[string]int{"multi_html.eml": 1}
 	entries, err := os.ReadDir("testdata")

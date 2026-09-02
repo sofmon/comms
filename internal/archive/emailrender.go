@@ -60,24 +60,45 @@ func (d SkipDisposition) sentence() string {
 	}
 }
 
+// EmailRenderVersion is the frontmatter layout version stamped into every
+// email note as render_version. Notes are immutable once written, so a
+// layout change is never applied retroactively; the version lets a reader
+// tell an OLD note from a NEW one that merely has nothing to say.
+//
+//	1: the original layout (notes written before this field existed carry
+//	   no render_version at all, which reads as 1).
+//	2: adds headers — the bulk-mail headers emailpipe.TriageHeaderNames
+//	   captures at ingest. Absent on a v2 note means the message carried
+//	   none; absent on a v1 note means nobody looked. Noise triage's header
+//	   layer therefore says nothing about a v1 note and the other layers
+//	   decide.
+const EmailRenderVersion = 2
+
 // emailFrontmatter is marshaled with yaml.v3 only — hostile header values
 // (subjects, addresses, sender-supplied filenames) must never be able to
 // inject YAML structure.
 type emailFrontmatter struct {
-	Source       string `yaml:"source"` // instance id, e.g. "gmail:work"
-	Type         string `yaml:"type"`
-	Account      string `yaml:"account"`       // the account's email address
-	AccountLabel string `yaml:"account_label"` // its permanent config label
+	Source        string `yaml:"source"` // instance id, e.g. "gmail:work"
+	Type          string `yaml:"type"`
+	RenderVersion int    `yaml:"render_version"` // EmailRenderVersion
+	Account       string `yaml:"account"`        // the account's email address
+	AccountLabel  string `yaml:"account_label"`  // its permanent config label
 
-	MessageID   string   `yaml:"message_id"`
-	ThreadID    string   `yaml:"thread_id"`
-	Date        string   `yaml:"date"`     // Date: header instant, original offset, RFC 3339; "" if unparseable
-	DateUTC     string   `yaml:"date_utc"` // server timestamp, RFC 3339 UTC
-	From        []string `yaml:"from"`
-	To          []string `yaml:"to"`
-	Cc          []string `yaml:"cc"`
-	Subject     string   `yaml:"subject"`
-	Labels      []string `yaml:"labels"`
+	MessageID string   `yaml:"message_id"`
+	ThreadID  string   `yaml:"thread_id"`
+	Date      string   `yaml:"date"`     // Date: header instant, original offset, RFC 3339; "" if unparseable
+	DateUTC   string   `yaml:"date_utc"` // server timestamp, RFC 3339 UTC
+	From      []string `yaml:"from"`
+	To        []string `yaml:"to"`
+	Cc        []string `yaml:"cc"`
+	Subject   string   `yaml:"subject"`
+	Labels    []string `yaml:"labels"`
+
+	// Headers are the triage headers the message carried (emailpipe
+	// .EmailDoc.Headers), omitted entirely when there were none. yaml.v3
+	// writes map keys sorted, so the bytes are deterministic.
+	Headers map[string]string `yaml:"headers,omitempty"`
+
 	Attachments []string `yaml:"attachments"` // rel paths from the .md's directory
 
 	// SkippedAttachments records every part the attachment policy refused.
@@ -123,20 +144,22 @@ type skippedEntry struct {
 // can be invisible from the document (never-drop rule).
 func renderEmailMD(doc *emailpipe.EmailDoc, meta EmailMeta) ([]byte, error) {
 	fm := emailFrontmatter{
-		Source:       validStr(meta.Source),
-		Type:         "email",
-		Account:      validStr(meta.Account),
-		AccountLabel: validStr(meta.AccountLabel),
-		MessageID:    validStr(doc.MessageID),
-		ThreadID:     validStr(meta.ThreadID),
-		DateUTC:      meta.ServerTime.UTC().Format(time.RFC3339),
-		From:         validStrs(doc.From),
-		To:           validStrs(doc.To),
-		Cc:           validStrs(doc.Cc),
-		Subject:      validStr(doc.Subject),
-		Labels:       validStrs(meta.Labels),
-		PolicyDigest: validStr(doc.PolicyDigest),
-		Warnings:     validStrs(doc.Warnings),
+		Source:        validStr(meta.Source),
+		Type:          "email",
+		RenderVersion: EmailRenderVersion,
+		Account:       validStr(meta.Account),
+		AccountLabel:  validStr(meta.AccountLabel),
+		MessageID:     validStr(doc.MessageID),
+		ThreadID:      validStr(meta.ThreadID),
+		DateUTC:       meta.ServerTime.UTC().Format(time.RFC3339),
+		From:          validStrs(doc.From),
+		To:            validStrs(doc.To),
+		Cc:            validStrs(doc.Cc),
+		Subject:       validStr(doc.Subject),
+		Labels:        validStrs(meta.Labels),
+		Headers:       validMap(doc.Headers),
+		PolicyDigest:  validStr(doc.PolicyDigest),
+		Warnings:      validStrs(doc.Warnings),
 	}
 	if !doc.Date.IsZero() {
 		fm.Date = doc.Date.Format(time.RFC3339)

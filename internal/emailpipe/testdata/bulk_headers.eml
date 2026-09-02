@@ -1,0 +1,19 @@
+From: GitHub <notifications@github.com>
+To: you@example.com
+Subject: [org/repo] Bump dependencies (#12)
+Date: Fri, 07 Aug 2026 10:00:00 +0000
+Message-ID: <bulk-1@example.com>
+List-ID: org/repo <repo.org.github.com>
+List-Unsubscribe: <mailto:unsub@github.com>,
+ <https://github.com/notifications/unsubscribe/abc>
+List-Unsubscribe: <https://example.com/second>
+Precedence: list
+X-GitHub-Reason: subscribed
+Auto-Submitted: auto-generated
+X-Auto-Response-Suppress: All
+Feedback-ID: 1234:github
+X-Mailer: =?utf-8?Q?Bulkmailer=E2=84=A2?= 9000
+X-Unrelated: not captured
+Content-Type: text/plain; charset=utf-8
+
+A dependency was bumped.

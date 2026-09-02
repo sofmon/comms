@@ -39,6 +39,16 @@ type EmailDoc struct {
 	Date      time.Time // Date: header instant with its original offset; zero if unparseable
 	BodyMD    string    // converted body; cid:/data: image refs already rewritten to relative paths
 
+	// Headers are the bulk-mail and automation headers noise triage keys on,
+	// captured here because only the archiver ever sees the raw message:
+	// once the note is written nothing can consult a header that was not
+	// persisted without fetching the message again. Keys are lowercase
+	// header names from TriageHeaderNames; a repeated header's values are
+	// joined with ", ". Values are decoded, single-line and length-capped so
+	// a hostile header cannot bloat or restructure the frontmatter. nil when
+	// the message carries none of them.
+	Headers map[string]string
+
 	// Files are the parts the policy accepted: every one has a Rel under the
 	// attachment directory and its decoded Content, and every one must be
 	// written to disk. Body conversion failing never empties this slice.

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/url"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/JohannesKaufmann/html-to-markdown/v2/converter"
 	"github.com/JohannesKaufmann/html-to-markdown/v2/plugin/base"
@@ -69,6 +70,7 @@ func RenderWithOptions(raw []byte, attachDirName string, opts Options) (*EmailDo
 	} else {
 		doc.Warnings = append(doc.Warnings, fmt.Sprintf("missing or unparseable Date header: %v", err))
 	}
+	doc.Headers = triageHeaders(env)
 
 	// Files first (never-drop rule): every attachment, inline, and other
 	// part is named and put to the policy before body conversion is
@@ -143,6 +145,69 @@ func partKey(i int, p *enmime.Part) string {
 		return p.PartID
 	}
 	return fmt.Sprintf("#%d", i+1)
+}
+
+// TriageHeaderNames are the headers persisted into EmailDoc.Headers (and so
+// into the note's frontmatter) for noise triage. They are the signals bulk
+// senders and automation leave on a message that a reader never sees:
+// mailing-list identity and unsubscribe links, the RFC 3834 automation
+// markers, the bulk-ESP feedback loop id, GitHub's notification reason, and
+// the sending software. Nothing here is body content.
+var TriageHeaderNames = []string{
+	"List-Id",
+	"List-Unsubscribe",
+	"Precedence",
+	"Auto-Submitted",
+	"X-Auto-Response-Suppress",
+	"Feedback-ID",
+	"X-GitHub-Reason",
+	"X-Mailer",
+}
+
+// maxTriageHeaderBytes caps one persisted header value. Real values are a
+// few dozen bytes; the cap only bites on a header used as a payload.
+const maxTriageHeaderBytes = 512
+
+// triageHeaders collects TriageHeaderNames from the envelope, lowercase-keyed.
+// Every value is RFC 2047-decoded by enmime, then flattened to one line and
+// capped, because the frontmatter is YAML and a header is sender-controlled.
+func triageHeaders(env *enmime.Envelope) map[string]string {
+	var out map[string]string
+	for _, name := range TriageHeaderNames {
+		var vals []string
+		for _, v := range env.GetHeaderValues(name) {
+			if v = oneLineHeader(v); v != "" {
+				vals = append(vals, v)
+			}
+		}
+		if len(vals) == 0 {
+			continue
+		}
+		if out == nil {
+			out = make(map[string]string)
+		}
+		out[strings.ToLower(name)] = capHeader(strings.Join(vals, ", "))
+	}
+	return out
+}
+
+// oneLineHeader collapses every run of whitespace (folding included) to one
+// space and trims the ends.
+func oneLineHeader(s string) string {
+	return strings.Join(strings.Fields(s), " ")
+}
+
+// capHeader truncates s to maxTriageHeaderBytes on a rune boundary, marking
+// the cut so a reader knows the value continued.
+func capHeader(s string) string {
+	if len(s) <= maxTriageHeaderBytes {
+		return s
+	}
+	cut := maxTriageHeaderBytes
+	for cut > 0 && !utf8.RuneStart(s[cut]) {
+		cut--
+	}
+	return s[:cut] + "…"
 }
 
 // addresses returns the RFC 2047-decoded address list for key, formatted
