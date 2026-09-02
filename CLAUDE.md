@@ -23,6 +23,8 @@ go.mod.
 - Instance id `gmail:<label>` — keys ALL state (cursors, messages, chat tables).
 - File tag `gmail-<label>` — appears in EVERY filename.
 - Never mix them: a colon never reaches a filename; a tag is never a state key.
+- `disposition` (state.Disposition: which tree a NOTE is in) is not `archive.SkipDisposition`
+  (what became of a refused ATTACHMENT's bytes); the spec chose both names, keep them apart.
 - Account labels are PERMANENT (part of filenames + state); renaming one orphans that
   account's archive. Filename hashes derive from instance ids — tests must COMPUTE
   expected names via `internal/naming` (`EmailStem`/`ChatStem`/`Hash8`), never assert
@@ -53,6 +55,26 @@ go.mod.
    `--materialize`; the state DB must stay outside any synced folder; the daemon is a
    user LaunchAgent, not a LaunchDaemon.
 10. Timezone is pinned (state meta + written back into config); mismatch refuses start.
+11. Noise triage is a POST-PASS (`internal/triage`, `save triage`): never call the
+    classifier from a connector or the writer; sync archives everything first.
+12. The DB is the source of truth for a note's location: `messages.disposition`
+    (`archive`|`spam`) says which root `rel_path` is relative to, and EVERY absolute path
+    built from a rel path goes through `archive.Writer.RootFor`/`NotePath`. `WriteEmail`
+    accepts only the archive tree; `RewriteEmail` follows the row's disposition; `verify`
+    audits both trees. `spam_root` is never inside `archive_root` nor around it.
+13. Noise is moved, never deleted. `Writer.MoveNote` renames the `.md`, then the `.d/`,
+    and the caller updates the row AFTER (`state.DB.SetDisposition` is the only writer
+    of the triage columns; `CommitMessage` never touches them). Recovery rule for a crash
+    in between: the `.md`'s location wins, the `.d/` follows, then the row. A note in
+    both trees or neither is refused and reported, never guessed.
+14. Undecided is never noise. Layers stop at the first decisive one (protect → headers →
+    rules → llm); every outcome is a `triage_decisions` row; a model failure is undecided
+    AND transient (not settled under the digest, retried next pass). The daemon never
+    calls the model unless `[triage.llm] in_daemon = true`. `save untriage` decisions
+    (`disposition_rule = "manual"`) are never re-filed automatically.
+15. `render_version` in email frontmatter is a layout version: bump `archive.EmailRenderVersion`
+    when the frontmatter shape changes; existing notes are never rewritten for it, and
+    triage treats "no headers on a v1 note" as "nobody looked", not "none present".
 
 ## Style
 

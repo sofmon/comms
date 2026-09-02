@@ -68,9 +68,12 @@ is configured; otherwise the command lists the configured labels and stops.
 
 `save doctor` checks the whole setup account by account and prints the exact walkthrough
 for anything missing. `save status` shows per-account cursors, counts, pending
-attachments, and warnings. `save verify` audits the archive tree against the state
-database. `save refetch` pulls in attachments a widened
+attachments, and warnings. `save verify` audits the archive tree — and the spam tree —
+against the state database. `save refetch` pulls in attachments a widened
 [attachment policy](#attachment-safety) now accepts — never automatically.
+`save triage` files newsletters, notifications and other noise under a separate
+`spam_root`, never deleting anything and never touching sync; see
+[Noise triage](#noise-triage). Start with `save triage --dry-run`.
 
 ### Selecting accounts
 
@@ -142,12 +145,19 @@ available on FastMail **Basic** plans.
 
 ```toml
 archive_root = "~/Archive"
+# spam_root  = "~/spam"          # where noise triage files notes; default: beside archive_root
 timezone     = "local"
 
 [daemon]
 gmail_interval    = "5m"
 gchat_interval    = "2m"
 fastmail_interval = "5m"
+
+[triage]                         # see "Noise triage"; all optional
+# after_sync        = false      # run the rules after each successful mail sync
+# protect_subject   = ["*invoice*", "*factuur*", "*receipt*", "*security alert*", "*new sign-in*"]
+[triage.llm]
+# enabled           = false      # a local model, consulted last and only for the undecided
 
 # One [[google]] block is ONE Google identity; a single OAuth consent covers
 # both its Gmail and its Chat.
@@ -176,6 +186,7 @@ account = "you@fastmail.example"
 | Key | Default | Meaning |
 |---|---|---|
 | `archive_root` | `~/Archive` | Root of the merged `YYYY/MM/DD` tree |
+| `spam_root` | a `spam` directory beside `archive_root` | Where [noise triage](#noise-triage) files notes, at the same `YYYY/MM/DD/<name>` path. Must sit **beside** the archive (never inside it, nor around it) and on the same volume — a move is an atomic rename |
 | `timezone` | `"local"` | Resolved to an IANA zone on first sync, then pinned — the tree's day boundaries never shift even if the machine travels |
 | `[daemon] *_interval` | 5m / 2m / 5m | Poll intervals, global **per source kind** — every account of a kind polls on the same schedule (`gchat` short: history-off spaces retain messages only 24h) |
 | `[[google]] label` | — | Required, permanent, unique across **all** accounts of all kinds; must match `^[a-z0-9][a-z0-9-]{0,19}$` |
@@ -186,7 +197,15 @@ account = "you@fastmail.example"
 | `[[google]] show_deleted` | false | Keep "(message deleted)" tombstones in day files |
 | `[[google]] client_file` | `google-client.json` | This account's OAuth Desktop client JSON; needed when accounts are in different Workspace orgs |
 | `[[fastmail]] label` | — | Same rules as a Google label |
-| `[[fastmail]] account` | — | Informational, recorded in frontmatter |
+| `[[fastmail]] account` | — | Informational, recorded in frontmatter — and one of the "own addresses" triage never files |
+| `[triage] after_sync` | false | Run the rules-only triage layers after each successful mail sync, in `save sync` and in the daemon |
+| `[triage] header_heuristics` | true | Let the bulk-mail headers captured at archive time decide (Precedence: bulk/junk, Auto-Submitted, X-Auto-Response-Suppress, Gmail Promotions/Social) |
+| `[triage] rules_file` | `~/.config/save/triage.toml` | The `[[keep]]` / `[[noise]]` rules; `save init` writes a starter |
+| `[triage] protect_from` / `protect_subject` | `[]` / invoices, receipts, security alerts, new sign-ins | Globs that are signal before any other layer runs; a stored PDF/Office attachment and your own addresses are protected always |
+| `[triage.llm] enabled` | false | Ask a local model about the notes the rules left undecided |
+| `[triage.llm] in_daemon` | false | Let the `after_sync` pass ask it too (off: a stopped endpoint costs the archiver nothing) |
+| `[triage.llm] base_url` / `model` | `http://127.0.0.1:1234/v1` / — | An OpenAI-compatible chat endpoint (LM Studio, Ollama, …); `model` is required when enabled |
+| `[triage.llm] timeout` / `max_body_chars` | 20s / 4000 | Per request; body excerpt sent with the header fields |
 
 At least one account must be enabled. A `[[google]]` block with both `gmail = false` and
 `chat = false` is a configuration error, as is a duplicate label. The old single-account
@@ -203,7 +222,7 @@ Everything lives in the config dir (all `0600`, directory `0700`):
 | `google-token-<label>.json` | account | Always per label — two identities can never share one |
 | `fastmail-token-<label>` | account | Written by `save auth fastmail <label>` |
 
-Env overrides: `SAVE_CONFIG_DIR`, `SAVE_ARCHIVE_ROOT`, plus per-account
+Env overrides: `SAVE_CONFIG_DIR`, `SAVE_ARCHIVE_ROOT`, `SAVE_SPAM_ROOT`, plus per-account
 `SAVE_GOOGLE_CLIENT_FILE_<LABEL>`, `SAVE_GOOGLE_TOKEN_FILE_<LABEL>`,
 `SAVE_FASTMAIL_TOKEN_<LABEL>` (label uppercased, `-` → `_`; e.g.
 `SAVE_FASTMAIL_TOKEN_FM`). The unsuffixed `SAVE_GOOGLE_CLIENT_FILE`,
@@ -424,6 +443,119 @@ official corrections take days — failing closed would delete real business doc
 which the never-drop-silently rule does not permit. Point it at `clamdscan` against a
 running `clamd`, not `clamscan`, which reloads a ~1 GB signature database every time.
 
+## Noise triage
+
+Most of what lands in a mailbox was written by nobody: notifications, digests,
+promotions, monitoring alerts. Sync archives all of it, because deciding at archive time
+what is worth keeping is exactly the kind of decision that is wrong once and lost forever.
+So triage is a **separate pass**, over notes already on disk, and it has one rule of its
+own:
+
+> Noise is **moved**, never deleted. A note triage files as noise goes to `spam_root` at
+> the identical `YYYY/MM/DD/<name>` path it had in the archive, with its attachment
+> folder, and `save untriage` brings it back. Sync is untouched.
+
+The state database is the source of truth for where a note is. Every command that
+resolves a note's path — `verify`, `refetch`, `untriage`, the daemon — asks the row which
+tree it lives in, so a filed note is found under `spam_root`, never reported missing.
+
+### What moves, what never moves
+
+Classification runs in layers and stops at the first decisive one:
+
+| Layer | What it looks at | Decides |
+|---|---|---|
+| 0 protect | A stored PDF/Office attachment; mail from one of your own addresses; the `[triage] protect_from` / `protect_subject` globs | signal, always |
+| 1 headers | `Precedence: bulk`/`junk`, `Auto-Submitted`, `X-Auto-Response-Suppress`, Gmail's Promotions/Social categories | noise |
+| 2 rules | `triage.toml`: every `[[keep]]` rule, then every `[[noise]]` rule, in file order | signal or noise |
+| 3 llm | A local model, only if enabled, only for what layers 0–2 left undecided | signal or noise — or undecided |
+
+**Undecided is never noise.** A note no layer decides stays exactly where it is; the
+decision is recorded so `save status` can say how much of the archive the rules do not
+cover. A note is only ever in `spam_root` because a rule put it there, so a rules change
+that no longer calls it noise brings it back on the next pass.
+
+Layer 1 is deliberately narrow: `List-Id` and `List-Unsubscribe` are recorded but never
+decisive on their own — a work mailing list carries both — and Gmail's Updates category is
+where receipts land, so it decides nothing either. Those headers are available to the
+rules (`list_id`) and to the model.
+
+Rules match when **every** field a rule sets has a glob matching one of the note's values.
+Globs are case-insensitive over the whole value: `*` matches anything, `?` one character,
+and a pattern with no wildcard is an exact match. Keep rules are consulted before noise
+rules, so your "keep" always beats your "noise"; the protect list sits above both, since a
+`[[keep]]` rule cannot override the header layer but `protect_*` can.
+
+```toml
+[[keep]]
+name    = "billing"
+subject = ["*invoice*", "*receipt*"]
+
+[[noise]]
+name = "github-notifications"
+from = ["notifications@github.com"]
+
+[[noise]]
+name          = "personal-newsletters"
+subject       = ["*newsletter*"]
+account_label = ["personal"]
+```
+
+Fields: `from`, `to` (also matches Cc), `subject`, `list_id`, `labels`, `account_label`.
+
+### `save triage`
+
+```sh
+save triage --dry-run                     # every move, file by file, with rule and reason; moves nothing
+save triage                               # do it
+save triage --day 2026-08-07              # one day (in the archive's pinned zone); --since for a range
+save triage --source gmail:work           # same selector grammar as `save sync`
+save triage --reclassify                  # re-evaluate notes already decided under these rules
+save triage --reclassify --only llm       # ...but only the model's decisions
+save triage --explain <path-to-note.md>   # what each layer made of one note
+save untriage <path-or-id>                # bring a note back; it is yours from then on
+```
+
+A pass looks at the notes not yet **settled** under the current *triage digest* — a hash
+over everything that can change a verdict: the protect list, the header switch, every
+rule in order, the model's identity. Edit a rule and the digest moves, so the next pass
+re-evaluates everything; leave the rules alone and a pass over a triaged archive is a
+no-op. `--reclassify` re-evaluates regardless.
+
+Each move is two atomic renames — the `.md`, then its `.d/` attachment folder — followed
+by the database update, in that order, so the database never claims a location the files
+have not reached. A crash between the two leaves a state the next pass recognises and
+finishes: the `.md`'s location wins, the folder follows it, then the row. `save verify`
+audits both trees and reports a note found in both, or in neither, or in the wrong one.
+
+A note you bring back with `save untriage` is recorded as kept **by hand** and is never
+filed again by a later pass, whatever the rules say, until you ask for exactly that with
+`save triage --reclassify --only manual`.
+
+### The model is last and optional
+
+`[triage.llm]` is off by default, and when it is on it sees only what layers 0–2 could
+not decide. It is given the header fields and a bounded excerpt of the body, between
+markers the prompt declares untrusted data — the email cannot give it instructions, and
+any marker inside the email is neutralised so the fence cannot be forged — and it must
+answer with one strict JSON object. A timeout, a refused connection, prose instead of
+JSON, anything that is not a verdict, counts as **undecided**, never as noise. Its
+decisions carry the model name and prompt version, so a prompt change re-opens them and
+`--reclassify --only llm` finds exactly them.
+
+The daemon never calls it unless `in_daemon = true`. A stopped LM Studio cannot stall
+the archiver.
+
+### What sync persists for it
+
+Only the archiver ever sees the raw message, so the headers triage keys on are captured
+at archive time into the note's frontmatter (`headers:`), alongside the labels that were
+always there. That changed the bytes of every note written since, so notes carry a
+`render_version`: `2` means the headers were captured (and none present means the
+message had none); a note without the key predates the capture, and the header layer
+says nothing about it — the other layers decide. Existing notes are never rewritten for
+this.
+
 ## Storing the archive in iCloud Drive / an Obsidian vault
 
 Pointing `archive_root` at a folder inside an Obsidian vault in iCloud Drive works, and
@@ -439,6 +571,14 @@ Spaces and the embedded `~` in `iCloud~md~obsidian` are fine — only a **leadin
 expanded, the rest of the path is taken literally. `save doctor` prints a whole
 `archive storage` section when it notices the root is inside `~/Library/Mobile Documents`
 or `~/Library/CloudStorage`; read it.
+
+Everything here applies to `spam_root` too — with one difference that is the point of
+having it: it does not have to be in the vault at all. The default puts it beside
+`archive_root` (a vault at `…/MyVault/Communication` gets `…/MyVault/spam`, which
+Obsidian will index); setting `spam_root` to a plain folder on the same volume keeps the
+noise out of the vault, out of iCloud and off your phone, while `save untriage` still
+brings any note back. Filenames are unchanged by a move, so the sanitizer's guarantees
+hold in both trees.
 
 **The state database must stay outside the synced tree.** This is the one hard error
 `save doctor` reports. `state.db` is a WAL-mode SQLite database: three files (`state.db`,
@@ -529,6 +669,11 @@ GUI-session agent inherits the session policy, which is on. (launchd's
   its note *and* into a ledger row carrying the identity needed to fetch it later, so
   widening the policy is always recoverable and never automatic
   (see [Attachment safety](#attachment-safety)).
+- **Noise is moved, never deleted, and never by sync.** Triage is a separate pass; a note
+  it files keeps its path under `spam_root` and its attachment folder, the database says
+  which tree every note is in, each move is atomic per note with a documented recovery
+  for a crash between the renames and the row, and every decision — signal and undecided
+  included — is recorded (see [Noise triage](#noise-triage)).
 - **Accounts are isolated in state.** Cursors, the dedup index, the Chat store, the
   backfill queue, pending downloads and the failure ledger are all keyed by instance
   (`gmail:work`), so one account's backlog or poison item never affects another's, and a
@@ -549,5 +694,7 @@ Package map: `internal/source/{gmail,gchat,fastmail}` connectors →
 `internal/emailpipe` (MIME → Markdown) → `internal/archive` (atomic writes,
 rendering) with `internal/state` (SQLite cursors/index) underneath.
 `internal/policy` is the single attachment storage decision engine every one of
-them shares — one implementation, one `PolicyDigest`. See the plan in the repo
+them shares — one implementation, one `PolicyDigest`. `internal/triage` is the
+noise classifier (rules, headers, the optional model) that `save triage` runs as
+a post-pass; the mover lives in `internal/archive`. See the plan in the repo
 history for the full design.
