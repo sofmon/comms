@@ -554,7 +554,63 @@ func (a *app) runSourcePass(ctx context.Context, src source.Source) error {
 	if err := a.db.PruneRuns(keepRunsPerSource); err != nil {
 		passErr = errors.Join(passErr, err)
 	}
+	// Noise triage after a clean pass, when asked for. It is its own run
+	// row and never the sync's failure: the mail is archived and the
+	// cursors have advanced whatever triage makes of it.
+	if passErr == nil && a.cfg.Triage.AfterSync && state.KindOf(src.Name()) != state.SourceGChat {
+		a.triageAfterSync(ctx, src.Name())
+	}
 	return passErr
+}
+
+// triageAfterSync runs the rules-only layers over one mail instance's
+// unsettled notes — the ones this pass just archived, plus any an earlier
+// pass left — as `[triage] after_sync = true` asks. The model layer joins
+// only with `[triage.llm] in_daemon = true`, so a stopped endpoint can
+// never stall the archiver. Failures are logged and recorded on the run
+// row; nothing here can fail the sync.
+func (a *app) triageAfterSync(ctx context.Context, instanceID string) {
+	runID, err := a.db.StartRun(instanceID, "triage")
+	if err != nil {
+		a.log.Error("triage after sync: could not record the run", "source", instanceID, "err", err)
+		return
+	}
+	tally, err := a.triagePass(ctx, instanceID)
+	msg := ""
+	if err != nil {
+		msg = err.Error()
+		a.log.Error("triage after sync failed; the notes stay where they are and are looked at next pass", "source", instanceID, "err", err)
+	} else {
+		a.log.Info("triage after sync", "source", instanceID,
+			"to_spam", tally.MovedToSpam, "back", tally.MovedBack, "settled", tally.Settled,
+			"reconciled", tally.Reconciled, "not_read", tally.NotRead, "failed", tally.Failed)
+		if tally.Failed > 0 {
+			msg = fmt.Sprintf("%d note(s) could not be triaged", tally.Failed)
+		}
+	}
+	if ferr := a.db.FinishRun(runID, err == nil && tally.Failed == 0, state.RunStats{}, msg); ferr != nil {
+		a.log.Error("triage after sync: could not finish the run row", "source", instanceID, "err", ferr)
+	}
+}
+
+// triagePass builds and applies a plan for one instance, rules-only unless
+// the model is allowed in the daemon. The rules file is re-read every pass,
+// so an edit takes effect without a restart.
+func (a *app) triagePass(ctx context.Context, instanceID string) (triageTally, error) {
+	judge, err := llmJudge(a.cfg, true)
+	if err != nil {
+		return triageTally{}, err
+	}
+	cls, err := newClassifier(a.cfg, judge)
+	if err != nil {
+		return triageTally{}, err
+	}
+	r := &triageRun{cfg: a.cfg, db: a.db, writer: a.writer, cls: cls, log: a.log}
+	plan, err := r.buildTriagePlan(ctx, triageOpts{only: []string{instanceID}})
+	if err != nil {
+		return triageTally{}, err
+	}
+	return r.applyTriagePlan(ctx, plan), nil
 }
 
 // healChatDays renders every dirty chat day of EVERY instance. Startup

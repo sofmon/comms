@@ -36,6 +36,24 @@ func llmServer(t *testing.T, reply string, status int) *httptest.Server {
 	return s
 }
 
+// llmServerCounting is llmServer answering "noise" and counting the calls.
+func llmServerCounting(t *testing.T, calls *int) *httptest.Server {
+	t.Helper()
+	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Path == "/v1/models" {
+			_, _ = w.Write([]byte(`{"data":[{"id":"m"}]}`))
+			return
+		}
+		*calls++
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"choices": []map[string]any{{"message": map[string]any{"content": `{"noise": true, "reason": "bulk"}`}}},
+		})
+	}))
+	t.Cleanup(s.Close)
+	return s
+}
+
 // enableLLM appends an enabled [triage.llm] block pointing at the server
 // to the test config.
 func enableLLM(t *testing.T, url string) {
