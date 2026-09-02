@@ -53,7 +53,15 @@ func (d Duration) Duration() time.Duration { return time.Duration(d) }
 // defaults; the resolved credential locations on each account are filled in
 // from ConfigDir and the SAVE_* environment.
 type Config struct {
-	ArchiveRoot string            `toml:"archive_root"`
+	ArchiveRoot string `toml:"archive_root"`
+
+	// SpamRoot is the parallel tree noise triage moves notes into, keeping
+	// each note's YYYY/MM/DD/<name> path. Empty in the file means the
+	// default, a "spam" directory beside archive_root; Load fills it in, so
+	// after Load it is always absolute and never empty. It may not be inside
+	// archive_root, nor archive_root inside it — see Validate.
+	SpamRoot string `toml:"spam_root"`
+
 	Timezone    string            `toml:"timezone"`
 	Daemon      Daemon            `toml:"daemon"`
 	Attachments Attachments       `toml:"attachments"`
@@ -169,6 +177,14 @@ func Load(path string) (*Config, error) {
 		return nil, fmt.Errorf("%s: archive_root: %w", path, err)
 	}
 	cfg.ArchiveRoot = root
+	if v := os.Getenv("SAVE_SPAM_ROOT"); v != "" {
+		cfg.SpamRoot = v
+	}
+	if cfg.SpamRoot == "" {
+		cfg.SpamRoot = DefaultSpamRoot(cfg.ArchiveRoot)
+	} else if cfg.SpamRoot, err = expandTilde(cfg.SpamRoot); err != nil {
+		return nil, fmt.Errorf("%s: spam_root: %w", path, err)
+	}
 	// Resolve the keys whose default is another key's value before anything
 	// reads them, so every caller computes the same policy digest.
 	cfg.Attachments.applyDerived()
@@ -179,6 +195,13 @@ func Load(path string) (*Config, error) {
 		return nil, fmt.Errorf("%s: %w", path, err)
 	}
 	return cfg, nil
+}
+
+// DefaultSpamRoot is the spam tree used when spam_root is not set: a "spam"
+// directory beside archiveRoot (already tilde-expanded). Beside, not inside:
+// the two trees are audited as one archive and must never nest.
+func DefaultSpamRoot(archiveRoot string) string {
+	return filepath.Join(filepath.Dir(filepath.Clean(archiveRoot)), "spam")
 }
 
 // legacyProbe reports which single-bracket account sections a config still
@@ -344,6 +367,18 @@ func (c *Config) Validate() error {
 	var errs []error
 	if c.ArchiveRoot == "" {
 		errs = append(errs, errors.New("archive_root must not be empty"))
+	}
+	// The spam tree mirrors the archive tree at identical rel paths and both
+	// are walked by `save verify`; one inside the other would make every
+	// spam-filed note an orphan of the archive (or the reverse) and let a
+	// move land a note inside the tree it was moved out of.
+	switch {
+	case c.SpamRoot == "":
+		errs = append(errs, errors.New("spam_root must not be empty (omit it for the default: a \"spam\" directory beside archive_root)"))
+	case c.ArchiveRoot != "" && paths.UnderDir(c.ArchiveRoot, c.SpamRoot):
+		errs = append(errs, fmt.Errorf("spam_root %q is inside archive_root %q — the spam tree must sit beside the archive, never inside it", c.SpamRoot, c.ArchiveRoot))
+	case c.ArchiveRoot != "" && paths.UnderDir(c.SpamRoot, c.ArchiveRoot):
+		errs = append(errs, fmt.Errorf("archive_root %q is inside spam_root %q — the spam tree must sit beside the archive, never around it", c.ArchiveRoot, c.SpamRoot))
 	}
 	if c.Timezone == "" {
 		errs = append(errs, errors.New(`timezone must not be empty (use "local" or an IANA name like "Europe/Amsterdam")`))
@@ -611,6 +646,12 @@ const skeleton = `# save — local communication archiver.
 # The unsuffixed forms still work, but only with a single account of that kind.
 
 archive_root = "~/Archive"
+
+# Where noise triage files notes it decides are noise, at the same
+# YYYY/MM/DD/<name> path they had in the archive. Nothing is ever deleted;
+# ` + "`save untriage`" + ` moves a note back. Must be BESIDE archive_root — never inside
+# it — and on the same volume (a move is an atomic rename).
+# spam_root = "~/spam"          # default: a "spam" directory beside archive_root
 
 # "local" is resolved from the host and PINNED back into this file on the first
 # run, so the tree's day boundaries stay put afterwards. Naming an IANA zone

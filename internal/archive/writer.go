@@ -73,6 +73,13 @@ type Writer struct {
 	Root string
 	TZ   *time.Location
 
+	// SpamRoot is the root of the parallel tree noise triage moves notes
+	// into, mirroring Root's YYYY/MM/DD layout at identical rel paths. Every
+	// note is first written under Root; only a state.DispositionSpam row
+	// resolves here. Empty means no spam tree is configured, and resolving a
+	// spam disposition is then an error rather than a silent fallback to Root.
+	SpamRoot string
+
 	// Quarantine controls com.apple.quarantine tagging of attachment files
 	// (never of .md notes). The zero value tags, matching the
 	// attachments.quarantine = true config default; pass
@@ -146,6 +153,50 @@ type EmailMeta struct {
 	// skip truthfully. Both mail connectors download the whole message, so
 	// both should pass SkipBytesDiscarded; the renderer never guesses.
 	SkipDisposition SkipDisposition
+
+	// Disposition is which tree the note lives in — the messages row's
+	// state.Disposition, which the caller must have read from the state DB.
+	// The zero value means the archive tree. WriteEmail accepts only that:
+	// a new note is always written under Root, and only noise triage moves
+	// it. RewriteEmail honours it, so a refetch re-renders a spam-filed note
+	// in place under SpamRoot instead of forking a second copy under Root.
+	//
+	// It is unrelated to SkipDisposition above, which is about an
+	// attachment's bytes; this is about the note as a whole.
+	Disposition state.Disposition
+}
+
+// RootFor returns the tree a disposition selects: Root for the archive
+// (and for the zero value), SpamRoot for spam. It is the single place the
+// disposition-to-root mapping lives; every absolute path in this program
+// that starts from a messages.rel_path must come through here or NotePath.
+func (w *Writer) RootFor(d state.Disposition) (string, error) {
+	switch d {
+	case "", state.DispositionArchive:
+		if w.Root == "" {
+			return "", errors.New("archive: writer root not set")
+		}
+		return w.Root, nil
+	case state.DispositionSpam:
+		if w.SpamRoot == "" {
+			return "", errors.New("archive: a note is recorded as spam but no spam tree is configured (spam_root)")
+		}
+		return w.SpamRoot, nil
+	}
+	return "", fmt.Errorf("archive: unknown note disposition %q (one of %v)", d, state.Dispositions())
+}
+
+// NotePath resolves a root-relative path to its absolute location under the
+// tree disposition d selects.
+func (w *Writer) NotePath(rel string, d state.Disposition) (string, error) {
+	if err := checkRel(rel); err != nil {
+		return "", fmt.Errorf("archive: note path: %w", err)
+	}
+	root, err := w.RootFor(d)
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(root, filepath.FromSlash(rel)), nil
 }
 
 // origin is the provenance stamped onto this message's attachment files.
@@ -223,6 +274,18 @@ func (w *Writer) writeEmail(doc *emailpipe.EmailDoc, meta EmailMeta, mustExist b
 		return "", "", fmt.Errorf("archive: write email %s/%s: unknown skip disposition %q (use SkipBytesDiscarded or SkipBytesNotFetched)",
 			meta.Source, meta.StableID, meta.SkipDisposition)
 	}
+	// A new note is always written into the archive tree: connectors do not
+	// classify, triage does, and it moves notes after the fact. Only a
+	// re-render follows the row's disposition, so a refetch of a spam-filed
+	// note lands on the copy that exists rather than creating a second one.
+	if !mustExist && meta.Disposition != "" && meta.Disposition != state.DispositionArchive {
+		return "", "", fmt.Errorf("archive: write email %s/%s: a new note cannot be written with disposition %q — notes are written to the archive tree and moved by triage",
+			meta.Source, meta.StableID, meta.Disposition)
+	}
+	root, err := w.RootFor(meta.Disposition)
+	if err != nil {
+		return "", "", fmt.Errorf("archive: write email %s/%s: %w", meta.Source, meta.StableID, err)
+	}
 
 	local := meta.ServerTime.In(w.TZ)
 	dayDir := naming.DayDir(local)
@@ -246,18 +309,18 @@ func (w *Writer) writeEmail(doc *emailpipe.EmailDoc, meta EmailMeta, mustExist b
 			return "", "", fmt.Errorf("archive: write email %s/%s: attachment rel %q is not under %q (attach dir mismatch)",
 				meta.Source, meta.StableID, f.Rel, attachDir)
 		}
-		if err := w.checkDest(path.Join(dayDir, f.Rel)); err != nil {
+		if err := w.checkDest(root, path.Join(dayDir, f.Rel)); err != nil {
 			return "", "", fmt.Errorf("archive: write email %s/%s: %w", meta.Source, meta.StableID, err)
 		}
 	}
-	if err := w.checkDest(rel); err != nil {
+	if err := w.checkDest(root, rel); err != nil {
 		return "", "", fmt.Errorf("archive: write email %s/%s: %w", meta.Source, meta.StableID, err)
 	}
 	// A re-render must find the note it claims to be re-rendering, and must
 	// find it before anything is written, so a mis-targeted refetch leaves no
 	// trace at all.
 	if mustExist {
-		if err := w.mustExist(rel); err != nil {
+		if err := w.mustExist(root, rel); err != nil {
 			return "", "", fmt.Errorf("archive: rewrite email %s/%s: %w", meta.Source, meta.StableID, err)
 		}
 	}
@@ -266,7 +329,7 @@ func (w *Writer) writeEmail(doc *emailpipe.EmailDoc, meta EmailMeta, mustExist b
 	// not — it is save's own text, not something that arrived from outside.
 	origin := meta.origin(doc)
 	for _, f := range doc.Files {
-		if err := w.writeAtomic(writeSpec{
+		if err := w.writeAtomic(root, writeSpec{
 			rel:     path.Join(dayDir, f.Rel),
 			content: f.Content,
 			tag:     true,
@@ -280,21 +343,21 @@ func (w *Writer) writeEmail(doc *emailpipe.EmailDoc, meta EmailMeta, mustExist b
 	if err != nil {
 		return "", "", fmt.Errorf("archive: write email %s/%s: %w", meta.Source, meta.StableID, err)
 	}
-	if err := w.writeAtomic(writeSpec{rel: rel, content: content}); err != nil {
+	if err := w.writeAtomic(root, writeSpec{rel: rel, content: content}); err != nil {
 		return "", "", err
 	}
 	return rel, hashBytes(content), nil
 }
 
-// mustExist reports ErrNoteMissing unless rel is already a regular file. It
-// reuses the Writer's Stat seam so the check behaves the same in tests as the
-// post-rename confirmation does.
-func (w *Writer) mustExist(rel string) error {
+// mustExist reports ErrNoteMissing unless rel is already a regular file
+// under root. It reuses the Writer's Stat seam so the check behaves the same
+// in tests as the post-rename confirmation does.
+func (w *Writer) mustExist(root, rel string) error {
 	stat := os.Lstat
 	if w.Stat != nil {
 		stat = w.Stat
 	}
-	fi, err := stat(filepath.Join(w.Root, filepath.FromSlash(rel)))
+	fi, err := stat(filepath.Join(root, filepath.FromSlash(rel)))
 	if err != nil {
 		return fmt.Errorf("%w: %s (write it with WriteEmail first)", ErrNoteMissing, rel)
 	}
@@ -364,7 +427,14 @@ func (w *Writer) WriteChatDay(relPath string, content []byte) (contentHash strin
 	if err := checkRel(relPath); err != nil {
 		return "", fmt.Errorf("archive: write chat day: %w", err)
 	}
-	if err := w.writeAtomic(writeSpec{rel: relPath, content: content}); err != nil {
+	// Chat day files are never triaged, so they always live in the archive
+	// tree; resolving the root explicitly keeps that a stated fact rather
+	// than an accident of which field was handy.
+	root, err := w.RootFor(state.DispositionArchive)
+	if err != nil {
+		return "", err
+	}
+	if err := w.writeAtomic(root, writeSpec{rel: relPath, content: content}); err != nil {
 		return "", err
 	}
 	return hashBytes(content), nil
@@ -383,34 +453,48 @@ func (w *Writer) WriteChatAttachment(relPath string, content []byte, origin Orig
 	if err := checkRel(relPath); err != nil {
 		return "", fmt.Errorf("archive: write chat attachment: %w", err)
 	}
-	if err := w.writeAtomic(writeSpec{rel: relPath, content: content, tag: true, origin: origin}); err != nil {
+	// Chat blobs belong to chat day files, which are never triaged.
+	root, err := w.RootFor(state.DispositionArchive)
+	if err != nil {
+		return "", err
+	}
+	if err := w.writeAtomic(root, writeSpec{rel: relPath, content: content, tag: true, origin: origin}); err != nil {
 		return "", err
 	}
 	return hashBytes(content), nil
 }
 
-// SweepTemp empties the Root/.tmp scratch directory — its entries are
-// renameio litter from a crash between temp-file creation and rename. It
-// never touches anything outside .tmp: the archive root may hold
+// SweepTemp empties the .tmp scratch directory of every configured root —
+// its entries are renameio litter from a crash between temp-file creation
+// and rename. It never touches anything outside .tmp: a root may hold
 // pre-existing user files that are not this program's to delete. Returns
-// the Root-relative paths removed. Called once at startup.
+// the root-relative paths removed (the spam tree's prefixed with its root,
+// so the log can tell the two apart). Called once at startup.
 func (w *Writer) SweepTemp() (removed []string, err error) {
 	if w.Root == "" {
 		return nil, errors.New("archive: writer root not set")
 	}
-	tmpDir := filepath.Join(w.Root, TempDirName)
+	removed, err = sweepTempUnder(w.Root, "", removed)
+	if err != nil || w.SpamRoot == "" {
+		return removed, err
+	}
+	return sweepTempUnder(w.SpamRoot, w.SpamRoot+"/", removed)
+}
+
+func sweepTempUnder(root, prefix string, removed []string) ([]string, error) {
+	tmpDir := filepath.Join(root, TempDirName)
 	entries, err := os.ReadDir(tmpDir)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return nil, nil // nothing staged yet
+			return removed, nil // nothing staged yet
 		}
-		return nil, fmt.Errorf("archive: sweep temp: %w", err)
+		return removed, fmt.Errorf("archive: sweep temp: %w", err)
 	}
 	for _, e := range entries {
 		if err := os.RemoveAll(filepath.Join(tmpDir, e.Name())); err != nil {
 			return removed, fmt.Errorf("archive: sweep temp: %w", err)
 		}
-		removed = append(removed, path.Join(TempDirName, e.Name()))
+		removed = append(removed, prefix+path.Join(TempDirName, e.Name()))
 	}
 	return removed, nil
 }
@@ -457,9 +541,12 @@ type writeSpec struct {
 	origin Origin
 }
 
-// writeAtomic writes spec.content to Root/spec.rel via a renameio temp file
-// staged in Root/.tmp (same filesystem, so the rename is atomic), replacing
-// atomically. The archive holds private mail: files are 0600, dirs 0700.
+// writeAtomic writes spec.content to root/spec.rel via a renameio temp file
+// staged in root/.tmp (same filesystem, so the rename is atomic), replacing
+// atomically. root is whichever tree the caller resolved through RootFor:
+// the staging directory must live under the SAME root as the destination,
+// which is why it is a parameter rather than always Root. The archive holds
+// private mail: files are 0600, dirs 0700.
 //
 // Three guards wrap the rename, all of them there because the archive root
 // normally sits inside an iCloud Drive container:
@@ -480,12 +567,12 @@ type writeSpec struct {
 // the attribute is never missing from a path anything can observe. See
 // QuarantineMode: it is a consent prompt and a Protected View trigger, not a
 // malware scan.
-func (w *Writer) writeAtomic(spec writeSpec) error {
+func (w *Writer) writeAtomic(root string, spec writeSpec) error {
 	rel, content := spec.rel, spec.content
-	if err := w.checkDest(rel); err != nil {
+	if err := w.checkDest(root, rel); err != nil {
 		return fmt.Errorf("archive: %w", err)
 	}
-	abs := filepath.Join(w.Root, filepath.FromSlash(rel))
+	abs := filepath.Join(root, filepath.FromSlash(rel))
 	if err := w.assertNotDataless(abs, "destination"); err != nil {
 		return fmt.Errorf("archive: write %s: %w", rel, err)
 	}
@@ -493,7 +580,7 @@ func (w *Writer) writeAtomic(spec writeSpec) error {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return fmt.Errorf("archive: mkdir %s: %w", dir, err)
 	}
-	tmpDir := filepath.Join(w.Root, TempDirName)
+	tmpDir := filepath.Join(root, TempDirName)
 	if err := os.MkdirAll(tmpDir, 0o700); err != nil {
 		return fmt.Errorf("archive: mkdir %s: %w", tmpDir, err)
 	}
@@ -550,19 +637,23 @@ func (w *Writer) tagPending(tmpPath string, spec writeSpec) error {
 	return nil
 }
 
-// checkDest validates one archive-relative destination before the writer
+// checkDest validates one root-relative destination before the writer
 // creates anything for it.
 //
 // Both failures are permanent for the item and actionable for the user, so
 // they belong in the failures ledger rather than in a retry loop: an
-// over-budget path is a property of the archive root, and an excluded name
-// means a connector handed the writer a name that never went through
+// over-budget path is a property of the root, and an excluded name means a
+// connector handed the writer a name that never went through
 // naming.SanitizeFilename.
-func (w *Writer) checkDest(rel string) error {
-	if err := naming.CheckArchivePath(w.Root, rel); err != nil {
+func (w *Writer) checkDest(root, rel string) error {
+	if err := naming.CheckArchivePath(root, rel); err != nil {
 		if errors.Is(err, naming.ErrPathTooLong) {
-			return fmt.Errorf("cannot write %s: %w; the archive root %q already uses %d of the %d-byte budget, leaving %d bytes for archive-relative paths and this one needs %d — the archive root is the likely cause: move it to a shorter path (`save doctor` reports the remaining budget)",
-				rel, err, w.Root, len(w.Root), naming.MaxPathBytes, naming.PathBudget(w.Root), len(rel))
+			which := "archive root"
+			if root != w.Root && root == w.SpamRoot {
+				which = "spam root"
+			}
+			return fmt.Errorf("cannot write %s: %w; the %s %q already uses %d of the %d-byte budget, leaving %d bytes for root-relative paths and this one needs %d — the %s is the likely cause: move it to a shorter path (`save doctor` reports the remaining budget)",
+				rel, err, which, root, len(root), naming.MaxPathBytes, naming.PathBudget(root), len(rel), which)
 		}
 		return fmt.Errorf("cannot write %s: %w", rel, err)
 	}

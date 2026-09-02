@@ -49,6 +49,13 @@ type RefetchRequest struct {
 	// original decision keyed on, and ContentSHA256 — see RefetchPart.Diverged
 	// for what a connector must do with that hash.
 	Parts []state.SkippedAttachment
+
+	// Disposition is which tree the message's note lives in, read from its
+	// messages row: a mail connector MUST pass it through as
+	// archive.EmailMeta.Disposition when it re-renders, so a note noise triage
+	// filed under spam_root is rewritten there rather than duplicated under
+	// archive_root. Chat requests always carry the archive disposition.
+	Disposition state.Disposition
 }
 
 // PartKeys is the requested parts' fetch identities, in request order.
@@ -109,8 +116,9 @@ type RefetchResult struct {
 	SourceGone bool
 
 	// NoteRelPath is the note the connector re-rendered, relative to the
-	// archive root. Mail connectors must re-render through
-	// archive.Writer.RewriteEmail (which refuses to CREATE a note) and update
+	// root its disposition selects (the request's Disposition). Mail
+	// connectors must re-render through archive.Writer.RewriteEmail (which
+	// refuses to CREATE a note) with that disposition, and update
 	// messages.content_hash in the same commit; refetch cross-checks the path
 	// against the one recorded on the skip row and warns when they disagree.
 	// Chat connectors leave it empty and dirty the day instead — refetch
@@ -573,7 +581,11 @@ func (a *app) executeRefetch(ctx context.Context, out io.Writer, plan refetchPla
 			continue
 		}
 
-		res, err := rf.RefetchMessage(ctx, RefetchRequest{StableID: g.StableID, Parts: g.Items})
+		disp, err := a.noteDisposition(g.Source, g.StableID)
+		if err != nil {
+			return tally, err
+		}
+		res, err := rf.RefetchMessage(ctx, RefetchRequest{StableID: g.StableID, Parts: g.Items, Disposition: disp})
 		switch {
 		case errors.Is(err, ErrRefetchUnsupported):
 			unsupported[g.Source] = true
@@ -605,6 +617,27 @@ func (a *app) executeRefetch(ctx context.Context, out io.Writer, plan refetchPla
 		}
 	}
 	return tally, nil
+}
+
+// noteDisposition looks up which tree a message's note lives in, so the
+// connector re-renders the copy that exists. Chat has no messages row and is
+// never triaged, so it is always the archive tree; a mail message with no
+// row is one the skip ledger knows but the archive does not (never a normal
+// state), and is reported rather than guessed at.
+func (a *app) noteDisposition(source, stableID string) (state.Disposition, error) {
+	if state.KindOf(source) == state.SourceGChat {
+		return state.DispositionArchive, nil
+	}
+	m, ok, err := a.db.GetMessage(source, stableID)
+	if err != nil {
+		return "", err
+	}
+	if !ok {
+		a.log.Warn("skip ledger names a message the archive has no row for; assuming the archive tree",
+			"source", source, "stable_id", stableID)
+		return state.DispositionArchive, nil
+	}
+	return m.Disposition, nil
 }
 
 // applyRefetchResult turns one connector outcome into ledger dispositions.

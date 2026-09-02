@@ -106,6 +106,7 @@ func listSourcesRO(db *sql.DB) ([]string, error) {
 		UNION SELECT source FROM failures
 		UNION SELECT source FROM skipped_attachments
 		UNION SELECT source FROM sync_runs
+		UNION SELECT source FROM triage_decisions
 		ORDER BY 1`)
 	if err != nil {
 		return nil, fmt.Errorf("list state sources: %w", err)

@@ -27,13 +27,22 @@ import (
 	"save/internal/policy"
 )
 
-// schemaVersion gates migrations via PRAGMA user_version.
-const schemaVersion = 1
+// schemaVersion gates migrations via PRAGMA user_version. A fresh database
+// gets schemaV1 and then every step in migrations, in order, so a new file
+// and an upgraded one end with byte-for-byte the same schema: each change to
+// the schema is written exactly once, as a step, never also folded back into
+// the base DDL.
+const schemaVersion = 2
 
 // Well-known meta keys.
 const (
 	MetaArchiveTZ   = "archive_tz"
 	MetaArchiveRoot = "archive_root"
+
+	// MetaSpamRoot is the spam tree's root the last time this archive ran,
+	// recorded like MetaArchiveRoot: a change is legal (the tree moved) but
+	// worth a warning, since spam-filed rel paths only resolve inside it.
+	MetaSpamRoot = "spam_root"
 
 	// MetaAttachmentPolicyDigest is the policy.Policy.PolicyDigest that was in
 	// force the last time this archive was synced. When the digest computed
@@ -300,11 +309,67 @@ func schemaSQL() string {
 	return strings.Replace(s, resolutionsToken, sqlStringList(SkipResolutions()), 1)
 }
 
+// migrations holds one DDL step per schema version above 1, keyed by the
+// version it upgrades TO. migrate applies every step past the database's
+// current user_version inside a single transaction.
+var migrations = map[int]func() string{
+	2: schemaV2SQL,
+}
+
+// schemaV2SQL is the noise-triage step: every email note gets a disposition
+// (which of the two trees it lives in, plus why) and the triage_decisions
+// ledger records the latest verdict for every message that was ever looked
+// at, signal and undecided included.
+//
+// messages.rel_path keeps meaning "relative to a root" — the disposition
+// says WHICH root. Everything that turns a rel path into a file must resolve
+// it through the disposition (archive.Writer.NotePath), never through
+// archive_root alone, or a spam-filed note reads as missing.
+//
+// The disposition columns are added with ADD COLUMN, so existing rows read
+// as 'archive' — exactly right: nothing has been moved yet.
+func schemaV2SQL() string {
+	return `
+ALTER TABLE messages ADD COLUMN disposition TEXT NOT NULL DEFAULT '` + string(DispositionArchive) + `'
+  CHECK (disposition IN (` + sqlStringList(Dispositions()) + `));
+ALTER TABLE messages ADD COLUMN disposition_reason TEXT;
+ALTER TABLE messages ADD COLUMN disposition_rule TEXT;
+ALTER TABLE messages ADD COLUMN disposition_at TEXT;
+ALTER TABLE messages ADD COLUMN triage_digest TEXT;
+CREATE INDEX idx_messages_disposition ON messages(disposition);
+CREATE INDEX idx_messages_rel_path ON messages(rel_path);
+
+-- triage_decisions is the noise-triage ledger: the LATEST decision for every
+-- message a triage pass has considered, whatever the verdict. A message the
+-- rules left alone is recorded as signal or undecided here just like a noisy
+-- one, so "save status" can say how many notes each layer and rule decided
+-- and "save triage --explain" can say why one note is where it is.
+--
+-- It is deliberately separate from messages.disposition: the disposition is
+-- where the note IS, this is what was DECIDED. They agree after a completed
+-- pass and can briefly disagree between a decision and the move it implies
+-- (the mover writes the ledger row first, moves the files, then updates the
+-- disposition — see archive.Writer.MoveNote for the recovery rule).
+CREATE TABLE triage_decisions (
+  source     TEXT NOT NULL,
+  stable_id  TEXT NOT NULL,
+  verdict    TEXT NOT NULL CHECK (verdict IN (` + sqlStringList(TriageVerdicts()) + `)),
+  layer      TEXT NOT NULL CHECK (layer IN (` + sqlStringList(TriageLayers()) + `)),
+  rule       TEXT NOT NULL,
+  reason     TEXT NOT NULL,
+  digest     TEXT NOT NULL,
+  decided_at TEXT NOT NULL,
+  PRIMARY KEY (source, stable_id)
+);
+CREATE INDEX idx_triage_by_rule ON triage_decisions(source, verdict, layer, rule);
+`
+}
+
 // sqlStringList renders values as a SQL string literal list: 'a', 'b', 'c'.
-func sqlStringList(values []string) string {
+func sqlStringList[S ~string](values []S) string {
 	quoted := make([]string, len(values))
 	for i, v := range values {
-		quoted[i] = "'" + strings.ReplaceAll(v, "'", "''") + "'"
+		quoted[i] = "'" + strings.ReplaceAll(string(v), "'", "''") + "'"
 	}
 	return strings.Join(quoted, ", ")
 }
@@ -348,8 +413,20 @@ func migrate(db *sql.DB) error {
 		return err
 	}
 	defer tx.Rollback()
-	if _, err := tx.Exec(schemaSQL()); err != nil {
-		return fmt.Errorf("apply schema v1: %w", err)
+	if v == 0 {
+		if _, err := tx.Exec(schemaSQL()); err != nil {
+			return fmt.Errorf("apply schema v1: %w", err)
+		}
+		v = 1
+	}
+	for target := v + 1; target <= schemaVersion; target++ {
+		step, ok := migrations[target]
+		if !ok {
+			return fmt.Errorf("no migration step to schema version %d", target)
+		}
+		if _, err := tx.Exec(step()); err != nil {
+			return fmt.Errorf("apply schema v%d: %w", target, err)
+		}
 	}
 	if _, err := tx.Exec(fmt.Sprintf("PRAGMA user_version = %d", schemaVersion)); err != nil {
 		return fmt.Errorf("set user_version: %w", err)

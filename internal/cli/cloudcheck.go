@@ -22,12 +22,13 @@ package cli
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
-	"strings"
 
 	"github.com/adrg/xdg"
 
 	"save/internal/naming"
+	"save/internal/paths"
 )
 
 // evictionFreeBytes is the free-space mark below which macOS starts evicting
@@ -49,6 +50,8 @@ type cloudEnv struct {
 	tracked   func(path string) (bool, error)
 	optimize  func() (on bool, known bool)
 	freeBytes func(path string) (uint64, error)
+	// device identifies the filesystem a path is on; nil skips the check.
+	device func(path string) (uint64, error)
 }
 
 func defaultCloudEnv() cloudEnv {
@@ -57,6 +60,7 @@ func defaultCloudEnv() cloudEnv {
 		tracked:   trackedPath,
 		optimize:  optimizeStorage,
 		freeBytes: freeBytes,
+		device:    deviceOf,
 	}
 }
 
@@ -97,12 +101,73 @@ func detectCloudDomain(dir string, env cloudEnv) (cloudDomain, bool) {
 	return cloudDomain{}, false
 }
 
-// underDir reports whether path is dir itself or anything beneath it. Both
-// are cleaned first, so "/a/b" contains "/a/b/../b/c" and does not contain
-// "/a/bc".
-func underDir(dir, path string) bool {
-	dir, path = filepath.Clean(dir), filepath.Clean(path)
-	return dir == path || strings.HasPrefix(path, dir+string(filepath.Separator))
+// underDir reports whether path is dir itself or anything beneath it; the
+// config package's spam_root nesting check uses the same rule.
+func underDir(dir, path string) bool { return paths.UnderDir(dir, path) }
+
+// checkSpamRoot reports on the spam tree noise triage moves notes into. The
+// config loader already refuses a spam_root inside archive_root (or the
+// reverse), so what is left to say is where it sits: on the same volume as
+// the archive, since a move is an atomic rename and a rename cannot cross
+// filesystems; whether it is inside a sync tree, since everything filed as
+// noise then syncs too; and whether its path leaves room for the deepest
+// file a move can carry across.
+func (d *doctorReport) checkSpamRoot(archiveRoot, spamRoot string, env cloudEnv) {
+	d.section("noise triage — spam_root %s", spamRoot)
+	d.ok("notes triaged as noise move here (with their attachment folders) at the same YYYY/MM/DD path; nothing is ever deleted, and `save untriage` moves them back")
+
+	if env.device != nil {
+		switch same, err := sameDevice(env.device, archiveRoot, spamRoot); {
+		case err != nil:
+			d.info("could not tell whether spam_root and archive_root share a volume (%v); a move across volumes fails loudly rather than copying", err)
+		case !same:
+			d.bad("Point spam_root at a directory on the same volume as archive_root (the default is a\n\"spam\" directory beside it).",
+				"spam_root %s is on a different volume than archive_root %s — a triage move is an atomic rename, which cannot cross volumes, so every move would fail", spamRoot, archiveRoot)
+		default:
+			d.ok("spam_root shares a volume with archive_root, so moves are atomic renames")
+		}
+	}
+	if dom, ok := detectCloudDomain(spamRoot, env); ok {
+		d.warn("spam_root is inside %s: everything triaged as noise still leaves this machine and lands on every device signed into the account, exactly like the archive", dom.what)
+	}
+	if budget := naming.PathBudget(spamRoot); budget < deepestArchivePathBytes {
+		d.warn("spam_root is %d bytes long, leaving %d for the rest of the path — the deepest file a move carries needs about %d, so some moves would be refused. Shorten it.",
+			len(spamRoot), budget, deepestArchivePathBytes)
+	}
+	if bad := naming.FirstSyncExcluded(spamRoot); bad != "" {
+		d.warn("the path component %q of spam_root is on iCloud's filename exclusion list; if this tree is meant to sync, nothing under it will", bad)
+	}
+}
+
+// sameDevice reports whether two paths live on one filesystem, judging each
+// by its nearest existing ancestor so a spam_root that has not been created
+// yet is judged by the directory it will be created in.
+func sameDevice(device func(string) (uint64, error), a, b string) (bool, error) {
+	da, err := device(nearestExisting(a))
+	if err != nil {
+		return false, err
+	}
+	db, err := device(nearestExisting(b))
+	if err != nil {
+		return false, err
+	}
+	return da == db, nil
+}
+
+// nearestExisting walks p up to the first path that stats, stopping at the
+// filesystem root.
+func nearestExisting(p string) string {
+	p = filepath.Clean(p)
+	for {
+		if _, err := os.Stat(p); err == nil {
+			return p
+		}
+		parent := filepath.Dir(p)
+		if parent == p {
+			return p
+		}
+		p = parent
+	}
 }
 
 // checkArchiveStorage reports on the medium archive_root sits on. It prints

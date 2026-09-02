@@ -182,6 +182,17 @@ func openApp() (*app, error) {
 	if err := db.SetMeta(state.MetaArchiveRoot, cfg.ArchiveRoot); err != nil {
 		return nil, err
 	}
+	// The spam tree is recorded the same way: spam-filed rel paths resolve
+	// only inside it, so a change means that tree moved too.
+	if root, hasRoot, err := db.GetMeta(state.MetaSpamRoot); err != nil {
+		return nil, err
+	} else if hasRoot && root != cfg.SpamRoot {
+		a.log.Warn("spam_root changed since the last run; the spam tree must have been moved along with it",
+			"was", root, "now", cfg.SpamRoot)
+	}
+	if err := db.SetMeta(state.MetaSpamRoot, cfg.SpamRoot); err != nil {
+		return nil, err
+	}
 
 	if err := a.checkPolicyDigest(); err != nil {
 		return nil, err
@@ -190,6 +201,7 @@ func openApp() (*app, error) {
 	a.tzName = zone
 	a.writer = &archive.Writer{
 		Root:       cfg.ArchiveRoot,
+		SpamRoot:   cfg.SpamRoot,
 		TZ:         loc,
 		Quarantine: archive.QuarantineFor(cfg.Attachments.Quarantine),
 	}

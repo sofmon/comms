@@ -141,6 +141,9 @@ func runDoctorWith(out io.Writer, env cloudEnv) error {
 	// archive lives inside iCloud Drive or another FileProvider.
 	d.checkArchiveStorage(cfg.ArchiveRoot, env)
 
+	// The spam tree: the one place a note can be besides the archive.
+	d.checkSpamRoot(cfg.ArchiveRoot, cfg.SpamRoot, env)
+
 	// The attachment storage policy: what it will keep, what it will refuse,
 	// and — honestly — what the quarantine tag does and does not do.
 	d.checkAttachmentPolicy(cfg)
@@ -151,6 +154,7 @@ func runDoctorWith(out io.Writer, env cloudEnv) error {
 	log := logger()
 	writer := &archive.Writer{
 		Root:       cfg.ArchiveRoot,
+		SpamRoot:   cfg.SpamRoot,
 		TZ:         loc,
 		Quarantine: archive.QuarantineFor(cfg.Attachments.Quarantine),
 	}

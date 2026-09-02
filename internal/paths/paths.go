@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/adrg/xdg"
 )
@@ -38,6 +39,14 @@ func StateDir() string {
 		return filepath.Join(d, appDir)
 	}
 	return filepath.Join(xdg.Home, ".local", "state", appDir)
+}
+
+// UnderDir reports whether path is dir itself or anything beneath it. Both
+// are cleaned first, so "/a/b" contains "/a/b/../b/c" and does not contain
+// "/a/bc". It is pure string work: neither path has to exist.
+func UnderDir(dir, path string) bool {
+	dir, path = filepath.Clean(dir), filepath.Clean(path)
+	return dir == path || strings.HasPrefix(path, dir+string(filepath.Separator))
 }
 
 // EnsureDir creates path (and parents) and forces its permissions to 0700.

@@ -1,6 +1,8 @@
 package state
 
 import (
+	"database/sql"
+	"fmt"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -30,6 +32,101 @@ func TestSchemaSQLSubstitutesEveryEnum(t *testing.T) {
 		if !strings.Contains(s, "'"+r+"'") {
 			t.Errorf("resolution %q is missing from the generated CHECK", r)
 		}
+	}
+}
+
+// TestSchemaV2SubstitutesEveryEnum: the triage step's CHECK lists are built
+// from the Go constants, like v1's, and every constant must be in them.
+func TestSchemaV2SubstitutesEveryEnum(t *testing.T) {
+	s := schemaV2SQL()
+	if strings.Contains(s, "@") {
+		t.Fatalf("schemaV2SQL contains an unsubstituted placeholder:\n%s", s)
+	}
+	for _, d := range Dispositions() {
+		if !strings.Contains(s, "'"+string(d)+"'") {
+			t.Errorf("disposition %q is missing from the generated CHECK", d)
+		}
+	}
+	for _, v := range TriageVerdicts() {
+		if !strings.Contains(s, "'"+string(v)+"'") {
+			t.Errorf("verdict %q is missing from the generated CHECK", v)
+		}
+	}
+	for _, l := range TriageLayers() {
+		if !strings.Contains(s, "'"+l+"'") {
+			t.Errorf("layer %q is missing from the generated CHECK", l)
+		}
+	}
+}
+
+// TestMigrateV1ToV2 opens a database created by the v1 code — the base DDL
+// alone, user_version 1, one archived message — and checks that Open
+// upgrades it in place: the row is still there, reads as archive with no
+// triage history, and the new ledger is usable. Then it opens the file again
+// to prove the upgrade is a no-op the second time.
+func TestMigrateV1ToV2(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "state.db")
+	raw, err := sql.Open("sqlite", "file:"+path+"?_pragma=journal_mode(WAL)")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := raw.Exec(schemaSQL()); err != nil {
+		t.Fatalf("apply v1 schema: %v", err)
+	}
+	if _, err := raw.Exec(`PRAGMA user_version = 1`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := raw.Exec(`
+		INSERT INTO messages (source, stable_id, ts_utc, day_bucket, rel_path, content_hash, archived_at)
+		VALUES ('gmail:work', 'old-1', '2026-08-07T12:00:00.000000000Z', '2026-08-07', '2026/08/07/old.md', 'h', '2026-08-07T12:00:01Z')`); err != nil {
+		t.Fatal(err)
+	}
+	raw.Close()
+
+	for round := 1; round <= 2; round++ {
+		db, err := Open(path)
+		if err != nil {
+			t.Fatalf("round %d: Open: %v", round, err)
+		}
+		var v int
+		if err := db.sql.QueryRow(`PRAGMA user_version`).Scan(&v); err != nil || v != schemaVersion {
+			t.Fatalf("round %d: user_version = %d, %v; want %d", round, v, err, schemaVersion)
+		}
+		m, ok, err := db.GetMessage("gmail:work", "old-1")
+		if err != nil || !ok {
+			t.Fatalf("round %d: the v1 row is gone: ok %v, err %v", round, ok, err)
+		}
+		if m.Disposition != DispositionArchive || m.TriageDigest != "" || m.DispositionRule != "" {
+			t.Errorf("round %d: v1 row reads as %+v; want archive with no triage history", round, m)
+		}
+		if err := db.UpsertTriageDecision(TriageDecision{
+			Source: "gmail:work", StableID: "old-1", Verdict: TriageSignal,
+			Layer: TriageLayerProtect, Rule: "own-address", Reason: "sent by the account itself", Digest: "d",
+		}); err != nil {
+			t.Errorf("round %d: the ledger is unusable: %v", round, err)
+		}
+		// The disposition CHECK is live on the upgraded table.
+		if _, err := db.sql.Exec(`UPDATE messages SET disposition = 'trash' WHERE stable_id = 'old-1'`); err == nil {
+			t.Errorf("round %d: the disposition CHECK accepted an unknown value", round)
+		}
+		db.Close()
+	}
+}
+
+// TestOpenRefusesANewerSchema: a database written by a later build must not
+// be silently reinterpreted by this one.
+func TestOpenRefusesANewerSchema(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "state.db")
+	db, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.sql.Exec(fmt.Sprintf(`PRAGMA user_version = %d`, schemaVersion+1)); err != nil {
+		t.Fatal(err)
+	}
+	db.Close()
+	if _, err := Open(path); err == nil {
+		t.Fatal("Open accepted a database from the future")
 	}
 }
 

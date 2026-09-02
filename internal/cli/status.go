@@ -34,6 +34,7 @@ func newStatusCmd() *cobra.Command {
 type statusReport struct {
 	GeneratedAt      time.Time      `json:"generated_at"`
 	ArchiveRoot      string         `json:"archive_root"`
+	SpamRoot         string         `json:"spam_root"` // where noise triage files notes
 	StateDB          string         `json:"state_db"`
 	TimezoneConfig   string         `json:"timezone_config"` // zone the config resolves to
 	TimezonePinned   string         `json:"timezone_pinned"` // meta.archive_tz; "" before first sync
@@ -143,6 +144,7 @@ func buildStatus(cfg *config.Config, dbPath string) (*statusReport, error) {
 	rep := &statusReport{
 		GeneratedAt: time.Now().UTC(),
 		ArchiveRoot: cfg.ArchiveRoot,
+		SpamRoot:    cfg.SpamRoot,
 		StateDB:     dbPath,
 	}
 	if _, zone, err := config.ResolveTimezone(cfg.Timezone); err == nil {
@@ -304,6 +306,7 @@ func buildPolicyStatus(cfg *config.Config, sdb *state.DB) (*policyStatus, error)
 
 func printStatus(out io.Writer, rep *statusReport) {
 	fmt.Fprintf(out, "archive root: %s\n", rep.ArchiveRoot)
+	fmt.Fprintf(out, "spam root:    %s\n", rep.SpamRoot)
 	fmt.Fprintf(out, "state db:     %s\n", rep.StateDB)
 	switch {
 	case rep.TimezonePinned == "":

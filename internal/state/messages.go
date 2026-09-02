@@ -6,6 +6,39 @@ import (
 	"time"
 )
 
+// Disposition says which tree an email note lives in. It is the state
+// database's answer, and the only answer: a rel path never says which root
+// it is relative to, so everything that turns messages.rel_path into a file
+// must resolve it through the row's disposition (archive.Writer.NotePath).
+//
+// Not to be confused with archive.SkipDisposition, which is what became of a
+// refused attachment's bytes. This one is about where a whole note is.
+type Disposition string
+
+const (
+	// DispositionArchive: the note is under archive_root, where every note is
+	// first written and where it stays unless triage decides otherwise.
+	DispositionArchive Disposition = "archive"
+
+	// DispositionSpam: noise triage moved the note (and its .d/ attachment
+	// directory) to the same rel path under spam_root. Nothing is deleted; the
+	// move is reversed by `save untriage`.
+	DispositionSpam Disposition = "spam"
+)
+
+// Dispositions returns every valid disposition, in a stable order. The
+// schema's CHECK constraint is generated from this list.
+func Dispositions() []Disposition {
+	return []Disposition{DispositionArchive, DispositionSpam}
+}
+
+// ValidDisposition reports whether d is one of the Disposition constants. The
+// empty string is NOT a disposition — callers that mean "the default" say
+// DispositionArchive.
+func ValidDisposition(d Disposition) bool {
+	return d == DispositionArchive || d == DispositionSpam
+}
+
 // Message is the DB row committed after an email's .md and attachment files
 // are durably on disk (write ordering: files first, row second).
 type Message struct {
@@ -16,8 +49,18 @@ type Message struct {
 	TS          time.Time // server timestamp (internalDate / receivedAt)
 	OrigOffset  string    // Date: header UTC offset, e.g. "+02:00"; "" if unknown
 	DayBucket   string    // "YYYY-MM-DD" in the pinned archive timezone
-	RelPath     string    // .md path relative to archive root
+	RelPath     string    // .md path relative to the root Disposition selects
 	ContentHash string    // sha256 of the .md bytes
+	Deleted     bool      // tombstoned upstream; the file is still on disk
+
+	// The triage columns. CommitMessage never writes them — a note is always
+	// committed into the archive tree and only SetDisposition moves it — so a
+	// crash-replay re-commit can never undo a triage decision.
+	Disposition       Disposition // where the note lives; DispositionArchive on a fresh row
+	DispositionReason string      // human-readable why; "" until triage looked at it
+	DispositionRule   string      // machine-readable rule id ("protect:attachment", "rules:noise:github", "llm:<model>@v1", "manual")
+	DispositionAt     time.Time   // when the disposition was last set; zero until triage looked at it
+	TriageDigest      string      // the triage digest the disposition is settled under; "" means "not decided under any"
 }
 
 // SeenMessage reports whether (source, stableID) is already archived
@@ -38,11 +81,21 @@ func (d *DB) SeenMessage(source, stableID string) (bool, error) {
 
 // CommitMessage records an archived email. Re-committing an existing
 // (source, stable_id) updates the mutable columns (a crash-replay re-render
-// may produce a fresh content hash) but preserves archived_at and the
-// deleted tombstone.
+// may produce a fresh content hash) but preserves archived_at, the deleted
+// tombstone, and every triage column.
+//
+// A commit always describes a note in the ARCHIVE tree: connectors write new
+// notes there and nothing else, and a re-render of a spam-filed note leaves
+// the row's disposition exactly as triage set it. Passing any other
+// disposition is a programming error, refused rather than ignored — the only
+// thing that moves a note is SetDisposition, after the files have moved.
 func (d *DB) CommitMessage(m Message) error {
 	if m.Source == "" || m.StableID == "" || m.DayBucket == "" || m.RelPath == "" || m.TS.IsZero() {
 		return fmt.Errorf("state: commit message %s/%s: source, stable id, ts, day bucket and rel path are required", m.Source, m.StableID)
+	}
+	if m.Disposition != "" && m.Disposition != DispositionArchive {
+		return fmt.Errorf("state: commit message %s/%s: disposition %q cannot be committed — notes are committed into the archive tree and moved only by SetDisposition",
+			m.Source, m.StableID, m.Disposition)
 	}
 	_, err := d.sql.Exec(`
 		INSERT INTO messages
@@ -64,6 +117,118 @@ func (d *DB) CommitMessage(m Message) error {
 		return fmt.Errorf("state: commit message %s/%s: %w", m.Source, m.StableID, err)
 	}
 	return nil
+}
+
+// messageColumns is the column list every Message read shares, in
+// scanMessage order.
+const messageColumns = `source, stable_id, rfc822_msgid, thread_id, ts_utc, orig_offset,
+	day_bucket, rel_path, content_hash, deleted,
+	disposition, disposition_reason, disposition_rule, disposition_at, triage_digest`
+
+// GetMessage returns one archived email's row; ok is false when no such
+// (source, stable_id) has been committed.
+func (d *DB) GetMessage(source, stableID string) (m Message, ok bool, err error) {
+	rows, err := d.sql.Query(`SELECT `+messageColumns+` FROM messages WHERE source = ? AND stable_id = ?`, source, stableID)
+	if err != nil {
+		return Message{}, false, fmt.Errorf("state: get message %s/%s: %w", source, stableID, err)
+	}
+	defer rows.Close()
+	out, err := scanMessages(rows)
+	if err != nil {
+		return Message{}, false, fmt.Errorf("state: get message %s/%s: %w", source, stableID, err)
+	}
+	if len(out) == 0 {
+		return Message{}, false, nil
+	}
+	return out[0], true, nil
+}
+
+// MessagesByRelPath returns every row whose rel_path is rel. A rel path
+// embeds the owning instance's tag and a hash over its instance id, so it
+// identifies at most one message in practice; the slice shape is honest
+// about the schema, which does not enforce that. It is how `save untriage`
+// turns a path the user typed back into a message.
+func (d *DB) MessagesByRelPath(rel string) ([]Message, error) {
+	rows, err := d.sql.Query(`SELECT `+messageColumns+` FROM messages WHERE rel_path = ? ORDER BY source, stable_id`, rel)
+	if err != nil {
+		return nil, fmt.Errorf("state: messages by rel path %s: %w", rel, err)
+	}
+	defer rows.Close()
+	out, err := scanMessages(rows)
+	if err != nil {
+		return nil, fmt.Errorf("state: messages by rel path %s: %w", rel, err)
+	}
+	return out, nil
+}
+
+// SetDisposition records where a note now lives and why. It is the ONLY
+// writer of the triage columns, and it must be called AFTER the files are in
+// the tree it names: the disposition is the source of truth for location, so
+// a row that says spam while the note is still under archive_root would make
+// verify report a missing file and the mover skip a move that never happened.
+// (The reverse order — files moved, row not yet updated — is the recoverable
+// one; see archive.Writer.MoveNote.)
+//
+// digest is the triage digest the decision was made under; "" records that
+// the note is NOT settled under any digest, so the next pass looks at it
+// again (used when a layer failed transiently, e.g. an unreachable LLM).
+// reason is for people, rule for machines.
+func (d *DB) SetDisposition(source, stableID string, disp Disposition, reason, rule, digest string) error {
+	where := source + "/" + stableID
+	if !ValidDisposition(disp) {
+		return fmt.Errorf("state: set disposition %s: %q is not a disposition (one of %v)", where, disp, Dispositions())
+	}
+	res, err := d.sql.Exec(`
+		UPDATE messages
+		SET disposition = ?, disposition_reason = ?, disposition_rule = ?,
+		    disposition_at = ?, triage_digest = ?
+		WHERE source = ? AND stable_id = ?`,
+		string(disp), nullStr(reason), nullStr(rule), fmtTime(time.Now()), nullStr(digest),
+		source, stableID)
+	if err != nil {
+		return fmt.Errorf("state: set disposition %s: %w", where, err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("state: set disposition %s: %w", where, err)
+	}
+	if n == 0 {
+		return fmt.Errorf("state: set disposition %s: no such message", where)
+	}
+	return nil
+}
+
+func scanMessages(rows *sql.Rows) ([]Message, error) {
+	var out []Message
+	for rows.Next() {
+		var m Message
+		var msgid, thread, offset, reason, rule, at, digest sql.NullString
+		var ts string
+		var deleted int
+		var disp string
+		if err := rows.Scan(&m.Source, &m.StableID, &msgid, &thread, &ts, &offset,
+			&m.DayBucket, &m.RelPath, &m.ContentHash, &deleted,
+			&disp, &reason, &rule, &at, &digest); err != nil {
+			return nil, fmt.Errorf("scan message: %w", err)
+		}
+		t, err := time.Parse(tsLayout, ts)
+		if err != nil {
+			return nil, fmt.Errorf("bad stored ts %q: %w", ts, err)
+		}
+		m.TS = t
+		m.RFC822MsgID, m.ThreadID, m.OrigOffset = msgid.String, thread.String, offset.String
+		m.Deleted = deleted != 0
+		m.Disposition = Disposition(disp)
+		m.DispositionReason, m.DispositionRule, m.TriageDigest = reason.String, rule.String, digest.String
+		if m.DispositionAt, err = parseNullTime(at); err != nil {
+			return nil, err
+		}
+		out = append(out, m)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("scan messages: %w", err)
+	}
+	return out, nil
 }
 
 // MarkMessageDeleted sets the DB-only tombstone for an archived message; the
