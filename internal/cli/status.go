@@ -77,6 +77,23 @@ type skippedAttachmentStatus struct {
 	UnresolvedByReason map[string]int64 `json:"unresolved_by_reason,omitempty"`
 }
 
+// triageStatus is one instance's noise-triage ledger.
+type triageStatus struct {
+	Noise     int64 `json:"noise"`     // filed under spam_root
+	Signal    int64 `json:"signal"`    // kept, by a protect rule, a keep rule, the model, or untriage
+	Undecided int64 `json:"undecided"` // no layer decided; kept
+
+	// ByRule splits the counts by verdict, deciding layer and rule.
+	ByRule []triageRuleStatus `json:"by_rule,omitempty"`
+}
+
+type triageRuleStatus struct {
+	Verdict string `json:"verdict"`
+	Layer   string `json:"layer"`
+	Rule    string `json:"rule,omitempty"`
+	Count   int64  `json:"count"`
+}
+
 // sourceStatus is one configured INSTANCE: one account's one source kind.
 type sourceStatus struct {
 	Name        string                  `json:"name"` // instance id, e.g. "gmail:work"
@@ -90,12 +107,15 @@ type sourceStatus struct {
 	// thing as SkippedItems below: this is "the policy refused these bytes",
 	// that is "these items failed to process too many times".
 	SkippedAttachments *skippedAttachmentStatus `json:"skipped_attachments,omitempty"`
-	BackfillPending    int64                    `json:"backfill_pending,omitempty"` // gmail
-	Cursors            []cursorRow              `json:"cursors,omitempty"`
-	SkippedItems       []state.Failure          `json:"skipped_items,omitempty"`      // at/over the skip threshold
-	FailingItems       int                      `json:"failing_items"`                // below the threshold, still retried
-	HistoryOffSpaces   []string                 `json:"history_off_spaces,omitempty"` // gchat
-	RecentRuns         []state.SyncRun          `json:"recent_runs,omitempty"`
+	// Triage is the noise-triage ledger: how many notes each layer and rule
+	// decided, and what it decided.
+	Triage           *triageStatus   `json:"triage,omitempty"`
+	BackfillPending  int64           `json:"backfill_pending,omitempty"` // gmail
+	Cursors          []cursorRow     `json:"cursors,omitempty"`
+	SkippedItems     []state.Failure `json:"skipped_items,omitempty"`      // at/over the skip threshold
+	FailingItems     int             `json:"failing_items"`                // below the threshold, still retried
+	HistoryOffSpaces []string        `json:"history_off_spaces,omitempty"` // gchat
+	RecentRuns       []state.SyncRun `json:"recent_runs,omitempty"`
 }
 
 func runStatus(out io.Writer, jsonOut bool) error {
@@ -177,6 +197,10 @@ func buildStatus(cfg *config.Config, dbPath string) (*statusReport, error) {
 	if err != nil {
 		return nil, err
 	}
+	triageCounts, err := sdb.CountTriage()
+	if err != nil {
+		return nil, err
+	}
 	if rep.AttachmentPolicy, err = buildPolicyStatus(cfg, sdb); err != nil {
 		return nil, err
 	}
@@ -204,6 +228,13 @@ func buildStatus(cfg *config.Config, dbPath string) (*statusReport, error) {
 				ByReason:           c.ByReason,
 				UnresolvedByReason: c.UnresolvedByReason,
 			}
+		}
+		if c, ok := triageCounts[in.ID]; ok {
+			ts := &triageStatus{Noise: c.Noise, Signal: c.Signal, Undecided: c.Undecided}
+			for _, rc := range c.ByRule {
+				ts.ByRule = append(ts.ByRule, triageRuleStatus{Verdict: string(rc.Verdict), Layer: rc.Layer, Rule: rc.Rule, Count: rc.Count})
+			}
+			ss.Triage = ts
 		}
 		cursors, err := listCursorsRO(ro, in.ID)
 		if err != nil {
@@ -336,6 +367,7 @@ func printStatus(out io.Writer, rep *statusReport) {
 				ss.Attachments.Pending, ss.Attachments.Done, ss.Attachments.Failed)
 		}
 		printSkippedAttachments(out, ss.SkippedAttachments)
+		printTriageStatus(out, ss.Triage)
 		if len(ss.Cursors) == 0 {
 			fmt.Fprintf(out, "  cursors:      none (backfill not started or not finished)\n")
 		} else {
@@ -423,6 +455,22 @@ func printSkippedAttachments(out io.Writer, s *skippedAttachmentStatus) {
 			continue
 		}
 		fmt.Fprintf(out, "    %-28s %d (%d unresolved)\n", reason, total, s.UnresolvedByReason[reason])
+	}
+}
+
+// printTriageStatus prints one instance's noise-triage ledger, split by the
+// deciding layer and rule.
+func printTriageStatus(out io.Writer, s *triageStatus) {
+	if s == nil {
+		return
+	}
+	fmt.Fprintf(out, "  triage:       %d noise (filed under spam_root), %d signal, %d undecided\n", s.Noise, s.Signal, s.Undecided)
+	for _, r := range s.ByRule {
+		id := r.Layer
+		if r.Rule != "" {
+			id += ":" + r.Rule
+		}
+		fmt.Fprintf(out, "    %-9s %-36s %d\n", r.Verdict, id, r.Count)
 	}
 }
 

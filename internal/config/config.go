@@ -65,6 +65,7 @@ type Config struct {
 	Timezone    string            `toml:"timezone"`
 	Daemon      Daemon            `toml:"daemon"`
 	Attachments Attachments       `toml:"attachments"`
+	Triage      Triage            `toml:"triage"`
 	Google      []GoogleAccount   `toml:"google"`
 	FastMail    []FastMailAccount `toml:"fastmail"`
 }
@@ -139,6 +140,7 @@ func Default() *Config {
 			FastMailInterval: Duration(5 * time.Minute),
 		},
 		Attachments: DefaultAttachments(),
+		Triage:      DefaultTriage(),
 	}
 }
 
@@ -188,6 +190,9 @@ func Load(path string) (*Config, error) {
 	// Resolve the keys whose default is another key's value before anything
 	// reads them, so every caller computes the same policy digest.
 	cfg.Attachments.applyDerived()
+	if err := cfg.Triage.resolve(); err != nil {
+		return nil, fmt.Errorf("%s: %w", path, err)
+	}
 	if err := cfg.resolveCredentials(); err != nil {
 		return nil, fmt.Errorf("%s: %w", path, err)
 	}
@@ -400,6 +405,9 @@ func (c *Config) Validate() error {
 		}
 	}
 	if err := c.Attachments.validate(); err != nil {
+		errs = append(errs, err)
+	}
+	if err := c.Triage.validate(); err != nil {
 		errs = append(errs, err)
 	}
 
@@ -744,6 +752,41 @@ fastmail_interval = "5m"
 #                           # Office documents are common and official
 #                           # corrections take days — failing closed would
 #                           # delete real business documents.
+
+# Noise triage: a separate pass (` + "`save triage`" + `) that files newsletters,
+# notifications and other noise under spam_root, at the same path they had in
+# the archive. Nothing is deleted; ` + "`save untriage`" + ` moves a note back. Sync is
+# untouched — every message is archived first, exactly as before. Decisions
+# run in layers and stop at the first decisive one: 0 the protect list below,
+# 1 bulk-mail headers captured at archive time, 2 the rules in triage.toml
+# (written by ` + "`save init`" + `), 3 an optional local model. ` + "`save triage --dry-run`" + `
+# prints every move before anything moves.
+[triage]
+# after_sync = false        # run layers 0-2 after each successful sync pass
+#                           # (also in the daemon); the model layer never runs
+#                           # here unless llm.in_daemon is set.
+# header_heuristics = true  # layer 1: Precedence: bulk/junk, Auto-Submitted,
+#                           # X-Auto-Response-Suppress, Gmail Promotions/Social
+# rules_file = "~/.config/save/triage.toml"
+#
+# The protect list: never noise, whatever the other layers say. A note with a
+# stored PDF/Office attachment and mail from your own addresses are protected
+# always; these globs add to that. Case-insensitive, whole value, * and ?.
+# protect_from    = []
+# protect_subject = ["*invoice*", "*factuur*", "*receipt*", "*security alert*", "*new sign-in*"]
+
+[triage.llm]
+# The model is LAST and OPTIONAL: it sees only what layers 0-2 left undecided,
+# gets the frontmatter fields plus a bounded body excerpt, and must answer with
+# strict JSON. Anything else — a timeout, a refused connection, prose instead
+# of JSON — is undecided, never noise. Its text is delimited and declared
+# untrusted in the prompt, so a message cannot instruct the model.
+# enabled        = false
+# in_daemon      = false    # let the after_sync pass consult it too
+# base_url       = "http://127.0.0.1:1234/v1"   # OpenAI-compatible (LM Studio, Ollama, ...)
+# model          = ""                            # required when enabled
+# timeout        = "20s"
+# max_body_chars = 4000
 
 # One [[google]] block is ONE Google identity; a single OAuth consent covers
 # both its Gmail and its Chat.

@@ -198,6 +198,74 @@ func TestTriageDecisionsAreAccountScopedAndCounted(t *testing.T) {
 	}
 }
 
+// TestMessagesForTriageScope: the pass sees exactly the rows it should —
+// unsettled ones by default, everything under --reclassify, narrowed by
+// day, since, source and by which layer decided — in a stable order.
+func TestMessagesForTriageScope(t *testing.T) {
+	db := openTest(t)
+	a := state.InstanceID(state.SourceGmail, "work")
+	b := state.InstanceID(state.SourceFastmail, "fm")
+	const cur = "0123456789abcdef"
+	add := func(src, id, day string, hour int) {
+		t.Helper()
+		m := triageMsg(src, id)
+		m.DayBucket = day
+		m.TS = time.Date(2026, 8, 7, hour, 0, 0, 0, time.UTC)
+		if err := db.CommitMessage(m); err != nil {
+			t.Fatal(err)
+		}
+	}
+	add(a, "fresh", "2026-08-07", 9)
+	add(a, "settled", "2026-08-07", 8)
+	add(a, "stale", "2026-08-06", 10)
+	add(a, "by-llm", "2026-08-05", 10)
+	add(b, "other", "2026-08-07", 7)
+	if err := db.SetDisposition(a, "settled", state.DispositionArchive, "kept", "rules:keep:x", cur); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.SetDisposition(a, "stale", state.DispositionSpam, "noise", "rules:noise:y", "ffffffffffffffff"); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.SetDisposition(a, "by-llm", state.DispositionSpam, "model", "llm:qwen@v1", cur); err != nil {
+		t.Fatal(err)
+	}
+	ids := func(s state.TriageScope) string {
+		t.Helper()
+		rows, err := db.MessagesForTriage(s)
+		if err != nil {
+			t.Fatalf("MessagesForTriage(%+v): %v", s, err)
+		}
+		var out []string
+		for _, m := range rows {
+			out = append(out, m.StableID)
+		}
+		return strings.Join(out, ",")
+	}
+	for name, tc := range []struct {
+		name  string
+		scope state.TriageScope
+		want  string
+	}{
+		{"unsettled only", state.TriageScope{Sources: []string{a}, Digest: cur}, "stale,fresh"},
+		{"reclassify sees all, ordered by day then time", state.TriageScope{Sources: []string{a}, Digest: cur, Reclassify: true}, "by-llm,stale,settled,fresh"},
+		{"one day", state.TriageScope{Sources: []string{a}, Digest: cur, Day: "2026-08-06"}, "stale"},
+		{"since", state.TriageScope{Sources: []string{a}, Digest: cur, Since: "2026-08-06", Reclassify: true}, "stale,settled,fresh"},
+		{"both sources, instance order", state.TriageScope{Sources: []string{a, b}, Digest: cur}, "other,stale,fresh"},
+		{"only llm decisions", state.TriageScope{Sources: []string{a}, Digest: cur, Reclassify: true, Only: "llm"}, "by-llm"},
+		{"only rules decisions", state.TriageScope{Sources: []string{a}, Digest: cur, Reclassify: true, Only: "rules"}, "stale,settled,fresh"},
+	} {
+		if got := ids(tc.scope); got != tc.want {
+			t.Errorf("%s (%d): got %q, want %q", tc.name, name, got, tc.want)
+		}
+	}
+	if _, err := db.MessagesForTriage(state.TriageScope{Digest: cur}); err == nil {
+		t.Error("no sources accepted")
+	}
+	if _, err := db.MessagesForTriage(state.TriageScope{Sources: []string{a}, Only: "vibes"}); err == nil {
+		t.Error("unknown --only accepted")
+	}
+}
+
 func TestTriageDecisionValidates(t *testing.T) {
 	db := openTest(t)
 	src := state.InstanceID(state.SourceGmail, "work")

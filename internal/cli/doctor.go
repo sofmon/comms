@@ -26,6 +26,7 @@ import (
 	"save/internal/source/gchat"
 	"save/internal/source/gmail"
 	"save/internal/state"
+	"save/internal/triage"
 )
 
 const checkTimeout = 30 * time.Second
@@ -144,6 +145,9 @@ func runDoctorWith(out io.Writer, env cloudEnv) error {
 	// The spam tree: the one place a note can be besides the archive.
 	d.checkSpamRoot(cfg.ArchiveRoot, cfg.SpamRoot, env)
 
+	// The triage rules and switches.
+	d.checkTriage(cfg)
+
 	// The attachment storage policy: what it will keep, what it will refuse,
 	// and — honestly — what the quarantine tag does and does not do.
 	d.checkAttachmentPolicy(cfg)
@@ -235,6 +239,48 @@ func (d *doctorReport) checkAttachmentPolicy(cfg *config.Config) {
 	}
 
 	d.checkPolicyDigest(pol.PolicyDigest())
+}
+
+// checkTriage reports the noise-triage configuration: whether the rules
+// file parses and how many rules it holds, what the protect layer covers,
+// and the state of the header and model layers. The model endpoint itself
+// is not probed here unless the layer is enabled.
+func (d *doctorReport) checkTriage(cfg *config.Config) {
+	d.section("[triage] — noise triage")
+	tr := cfg.Triage
+
+	rules, err := triage.LoadRules(tr.RulesFilePath)
+	switch {
+	case err != nil:
+		d.bad("Fix the rule and re-run; `save triage --dry-run` shows what the rules would do.", "%v", err)
+	case len(rules.Keep)+len(rules.Noise) == 0:
+		if _, statErr := os.Stat(tr.RulesFilePath); errors.Is(statErr, fs.ErrNotExist) {
+			d.info("no rules file at %s — `save init` writes a starter; until then only the protect and header layers decide", tr.RulesFilePath)
+		} else {
+			d.info("rules file %s holds no rules — only the protect and header layers decide", tr.RulesFilePath)
+		}
+	default:
+		d.ok("rules file %s: %d keep, %d noise rule(s)", tr.RulesFilePath, len(rules.Keep), len(rules.Noise))
+	}
+	d.ok("protect list: %d own address(es), %d protect_from, %d protect_subject glob(s); a stored PDF/Office attachment always protects",
+		len(cfg.OwnAddresses()), len(tr.ProtectFrom), len(tr.ProtectSubject))
+	if tr.HeaderHeuristics {
+		d.ok("header heuristics on: Precedence bulk/junk, Auto-Submitted, X-Auto-Response-Suppress and Gmail Promotions/Social are decisive noise")
+	} else {
+		d.info("header heuristics off (triage.header_heuristics = false)")
+	}
+	if tr.AfterSync {
+		d.info("after_sync = true: layers 0-2 run after every successful mail sync, in `save sync` and in the daemon")
+	}
+	if !tr.LLM.Enabled {
+		d.info("model layer off (triage.llm.enabled = false) — undecided notes stay where they are")
+		return
+	}
+	d.ok("model layer on: %s at %s, %s timeout, %d body chars; consulted only for notes the rules left undecided",
+		tr.LLM.Model, tr.LLM.BaseURL, tr.LLM.Timeout.Duration(), tr.LLM.MaxBodyChars)
+	if tr.LLM.InDaemon {
+		d.warn("triage.llm.in_daemon = true: the daemon's after_sync pass also calls the model; a stopped endpoint costs one timeout per undecided note per pass")
+	}
 }
 
 // checkPolicyDigest compares the digest the config now produces against the

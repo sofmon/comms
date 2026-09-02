@@ -5,11 +5,13 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	"path/filepath"
 
 	"github.com/spf13/cobra"
 
 	"save/internal/config"
 	"save/internal/paths"
+	"save/internal/triage"
 )
 
 func newInitCmd() *cobra.Command {
@@ -48,6 +50,21 @@ func runInit(cmd *cobra.Command) error {
 		return err
 	}
 
+	// The triage rules live in their own file so they can be edited without
+	// touching credentials paths and account blocks.
+	rulesPath := filepath.Join(cfgDir, "triage.toml")
+	switch _, err := os.Stat(rulesPath); {
+	case err == nil:
+		fmt.Fprintf(out, "triage:     %s already exists — left untouched\n", rulesPath)
+	case errors.Is(err, fs.ErrNotExist):
+		if err := triage.WriteDefaultRules(rulesPath); err != nil {
+			return err
+		}
+		fmt.Fprintf(out, "triage:     wrote starter rules %s (0600)\n", rulesPath)
+	default:
+		return err
+	}
+
 	fmt.Fprintf(out, `
 Next steps:
   1. Edit %s: set archive_root, then keep one [[google]] block per Google
@@ -67,6 +84,8 @@ Next steps:
   4. save auth fastmail <label>   # once per [[fastmail]] account
   5. save sync        # first backfill; Gmail can take hours and is resumable
   6. save run         # daemon — see docs/launchd/com.user.save.plist for autostart
+  7. save triage --dry-run   # later: see which notes the rules in triage.toml
+                             # would file under spam_root, then run it for real
 `, cfgPath, cfgDir)
 	return nil
 }

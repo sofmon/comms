@@ -1,5 +1,5 @@
 // Package cli wires the cobra command tree: init, auth google|fastmail,
-// sync, run, status, doctor, verify, version. Shared construction (config,
+// sync, run, status, refetch, triage, doctor, verify, version. Shared construction (config,
 // lock, state DB, timezone pin, writer, sources) lives in app.go; the
 // reporting commands read the state database read-only and take no lock, so
 // they work beside a running daemon.
@@ -44,6 +44,7 @@ func newRoot() *cobra.Command {
 		newRunCmd(),
 		newStatusCmd(),
 		newRefetchCmd(),
+		newTriageCmd(),
 		newDoctorCmd(),
 		newVerifyCmd(),
 		newVersionCmd(),

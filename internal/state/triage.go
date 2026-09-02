@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"fmt"
 	"slices"
+	"strings"
 	"time"
 )
 
@@ -127,6 +128,77 @@ func (d *DB) GetTriageDecision(source, stableID string) (t TriageDecision, ok bo
 		return TriageDecision{}, false, err
 	}
 	return t, true, nil
+}
+
+// TriageScope selects the messages one triage pass looks at.
+type TriageScope struct {
+	// Sources are the instance ids to consider; required.
+	Sources []string
+
+	// Day restricts to one day bucket ("YYYY-MM-DD"); Since to that day and
+	// later. Both are in the pinned archive timezone, like day_bucket.
+	Day, Since string
+
+	// Digest is the current triage digest. Rows already settled under it
+	// are left out — the pass is a no-op on them — unless Reclassify.
+	Digest     string
+	Reclassify bool
+
+	// Only narrows a Reclassify to decisions a particular layer made:
+	// "llm" for rows whose disposition_rule is a model decision, "rules"
+	// for every other row. "" means all.
+	Only string
+}
+
+// MessagesForTriage returns the rows a pass must evaluate, in a stable
+// order (instance, day, time, id) so a dry run and the run it precedes list
+// the same notes the same way.
+func (d *DB) MessagesForTriage(s TriageScope) ([]Message, error) {
+	if len(s.Sources) == 0 {
+		return nil, fmt.Errorf("state: messages for triage: at least one source is required")
+	}
+	var where []string
+	var args []any
+	marks := make([]string, len(s.Sources))
+	for i, src := range s.Sources {
+		marks[i] = "?"
+		args = append(args, src)
+	}
+	where = append(where, "source IN ("+strings.Join(marks, ",")+")")
+	if s.Day != "" {
+		where = append(where, "day_bucket = ?")
+		args = append(args, s.Day)
+	}
+	if s.Since != "" {
+		where = append(where, "day_bucket >= ?")
+		args = append(args, s.Since)
+	}
+	if !s.Reclassify {
+		where = append(where, "(triage_digest IS NULL OR triage_digest <> ?)")
+		args = append(args, s.Digest)
+	}
+	switch s.Only {
+	case "":
+	case "llm":
+		where = append(where, "disposition_rule LIKE 'llm:%'")
+	case "rules":
+		where = append(where, "(disposition_rule IS NULL OR disposition_rule NOT LIKE 'llm:%')")
+	default:
+		return nil, fmt.Errorf("state: messages for triage: unknown --only %q (rules or llm)", s.Only)
+	}
+	rows, err := d.sql.Query(`
+		SELECT `+messageColumns+` FROM messages
+		WHERE `+strings.Join(where, " AND ")+`
+		ORDER BY source, day_bucket, ts_utc, stable_id`, args...)
+	if err != nil {
+		return nil, fmt.Errorf("state: messages for triage: %w", err)
+	}
+	defer rows.Close()
+	out, err := scanMessages(rows)
+	if err != nil {
+		return nil, fmt.Errorf("state: messages for triage: %w", err)
+	}
+	return out, nil
 }
 
 // TriageRuleCount is one (verdict, layer, rule) bucket of an instance's
