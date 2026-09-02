@@ -80,8 +80,41 @@ func runTriage(out io.Writer, o triageOpts) error {
 	if o.dryRun {
 		return dryRunTriage(out, o)
 	}
-	return errors.New("save triage: moving notes is not available in this build yet — use --dry-run to see the plan")
+
+	ctx, stop := signalContext()
+	defer stop()
+	a, err := openApp()
+	if err != nil {
+		return err
+	}
+	defer a.Close()
+	// Stray temp files are swept (a move creates none, but a re-render
+	// through refetch might have); nothing else is healed here — this
+	// command moves notes, and only notes.
+	if removed, serr := a.writer.SweepTemp(); serr != nil {
+		return serr
+	} else if len(removed) > 0 {
+		a.log.Info("removed stray temp files", "count", len(removed))
+	}
+	cls, err := newClassifier(a.cfg, nil)
+	if err != nil {
+		return err
+	}
+	r := &triageRun{cfg: a.cfg, db: a.db, writer: a.writer, cls: cls, log: a.log}
+	plan, err := r.buildTriagePlan(ctx, o)
+	if err != nil {
+		return err
+	}
+	printTriagePlan(out, plan, false)
+	tally := r.applyTriagePlan(ctx, plan)
+	return finishTriage(out, tally)
 }
+
+// manualRule is the disposition_rule `save untriage` records. A note the
+// operator moved back by hand is theirs: no later pass re-files it, whatever
+// the rules say, until they run `save triage` on it again with --reclassify
+// --only manual.
+const manualRule = "manual"
 
 func (o triageOpts) validate() error {
 	for _, d := range []struct{ flag, v string }{{"day", o.day}, {"since", o.since}} {
@@ -96,9 +129,9 @@ func (o triageOpts) validate() error {
 		return errors.New("--day and --since are mutually exclusive")
 	}
 	switch o.onlyLayer {
-	case "", "rules", "llm":
+	case "", "rules", "llm", "manual":
 	default:
-		return fmt.Errorf("--only %q: want \"rules\" or \"llm\"", o.onlyLayer)
+		return fmt.Errorf("--only %q: want \"rules\", \"llm\" or \"manual\"", o.onlyLayer)
 	}
 	if o.onlyLayer != "" && !o.reclassify {
 		return errors.New("--only narrows a --reclassify; without --reclassify only undecided notes are looked at anyway")
@@ -155,6 +188,13 @@ type triageItem struct {
 	// a note only ever sits in spam because a rule said so.
 	Want state.Disposition
 
+	// FoundIn is set when the note was not where the database says but was
+	// in the other tree: a move a crash interrupted before the row was
+	// updated. The plan reads the note from there; applying it first
+	// reconciles the row (and the attachment directory) to the file's
+	// location, then acts on the verdict.
+	FoundIn state.Disposition
+
 	// Problem is set when the note could not be evaluated: "evicted" (its
 	// bytes are in iCloud and reading would download them), "missing",
 	// "not-email", or "unreadable: ...". Such a note is neither moved nor
@@ -162,12 +202,20 @@ type triageItem struct {
 	Problem string
 }
 
+// where is the tree the note is actually in.
+func (it triageItem) where() state.Disposition {
+	if it.FoundIn != "" {
+		return it.FoundIn
+	}
+	return it.Msg.Disposition
+}
+
 // Move reports whether applying the plan moves this note, and where.
 func (it triageItem) Move() (to state.Disposition, ok bool) {
 	if it.Problem != "" || it.Decision.Transient {
 		return "", false
 	}
-	if it.Want != it.Msg.Disposition {
+	if it.Want != it.where() {
 		return it.Want, true
 	}
 	return "", false
@@ -184,14 +232,20 @@ type triagePlan struct {
 	Scoped     bool
 
 	Items []triageItem
+	// Manual counts notes in scope that `save untriage` placed and which
+	// the pass therefore leaves alone (unless --only manual).
+	Manual int
 	// Unconfigured are instance ids the ledger holds rows for that the
 	// config no longer declares; nothing can read their notes.
 	Unconfigured map[string]int
 }
 
-func (p *triagePlan) tally() (toSpam, toArchive, protected, kept, byModel, undecided, transient, evicted, missing, unreadable int, perSource map[string]int) {
+func (p *triagePlan) tally() (toSpam, toArchive, protected, kept, byModel, undecided, transient, evicted, missing, unreadable, reconcile int, perSource map[string]int) {
 	perSource = map[string]int{}
 	for _, it := range p.Items {
+		if it.FoundIn != "" {
+			reconcile++
+		}
 		switch {
 		case it.Problem == "evicted":
 			evicted++
@@ -291,6 +345,10 @@ func (r *triageRun) buildTriagePlan(ctx context.Context, o triageOpts) (*triageP
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
+		if m.DispositionRule == manualRule && o.onlyLayer != "manual" {
+			plan.Manual++
+			continue
+		}
 		plan.Items = append(plan.Items, r.evaluate(ctx, m))
 	}
 	// Stranded rows are reported so a renamed label is not mistaken for a
@@ -313,7 +371,9 @@ func (r *triageRun) buildTriagePlan(ctx context.Context, o triageOpts) (*triageP
 	return plan, nil
 }
 
-// evaluate reads and classifies one note without touching anything.
+// evaluate reads and classifies one note without touching anything. A note
+// missing from the tree its row names is looked for in the other tree —
+// that is what an interrupted move looks like — and read from there.
 func (r *triageRun) evaluate(ctx context.Context, m state.Message) triageItem {
 	it := triageItem{Msg: m, Want: state.DispositionArchive}
 	abs, err := r.writer.NotePath(m.RelPath, m.Disposition)
@@ -322,6 +382,14 @@ func (r *triageRun) evaluate(ctx context.Context, m state.Message) triageItem {
 		return it
 	}
 	n, problem := r.readNote(abs)
+	if problem == "missing" {
+		other := otherTree(m.Disposition)
+		if otherAbs, err := r.writer.NotePath(m.RelPath, other); err == nil {
+			if n2, p2 := r.readNote(otherAbs); p2 != "missing" {
+				n, problem, it.FoundIn = n2, p2, other
+			}
+		}
+	}
 	if problem != "" {
 		it.Problem = problem
 		return it
@@ -331,6 +399,169 @@ func (r *triageRun) evaluate(ctx context.Context, m state.Message) triageItem {
 		it.Want = state.DispositionSpam
 	}
 	return it
+}
+
+func otherTree(d state.Disposition) state.Disposition {
+	if d == state.DispositionSpam {
+		return state.DispositionArchive
+	}
+	return state.DispositionSpam
+}
+
+// triageTally is the outcome of an applied plan.
+type triageTally struct {
+	MovedToSpam int
+	MovedBack   int
+	Settled     int // notes whose verdict left them in place, now recorded under the digest
+	Reconciled  int // rows corrected to where an interrupted move had left the file
+	Transient   int // model failures: left alone and unsettled
+	NotRead     int // evicted, missing, unreadable
+	Failed      int // moves that errored; left unsettled for the next run
+	Interrupted bool
+}
+
+// applyTriagePlan carries the plan out one note at a time. Per note the
+// order is: ledger row (the decision), then the files (MoveNote), then the
+// messages row (SetDisposition) — so a crash at any point leaves a state
+// the next pass recovers, and the database never claims a location the
+// files have not reached. A note whose move fails is logged and left
+// unsettled; nothing partial is recorded for it.
+func (r *triageRun) applyTriagePlan(ctx context.Context, plan *triagePlan) triageTally {
+	var t triageTally
+	digest := plan.Digest
+	for _, it := range plan.Items {
+		if err := ctx.Err(); err != nil {
+			t.Interrupted = true
+			break
+		}
+		if it.Problem != "" {
+			t.NotRead++
+			continue
+		}
+		src, id := it.Msg.Source, it.Msg.StableID
+		if it.FoundIn != "" {
+			if err := r.reconcile(it); err != nil {
+				t.Failed++
+				r.log.Error("could not reconcile a note an interrupted move left behind; left for the next run",
+					"source", src, "stable_id", id, "path", it.Msg.RelPath, "err", err)
+				continue
+			}
+			t.Reconciled++
+			it.Msg.Disposition, it.FoundIn = it.FoundIn, ""
+		}
+
+		d := it.Decision
+		if d.Transient {
+			// Undecided because a layer failed: record the attempt, settle
+			// nothing, keep the note where it is.
+			if err := r.db.UpsertTriageDecision(state.TriageDecision{
+				Source: src, StableID: id, Verdict: state.TriageUndecided,
+				Layer: state.TriageLayerNone, Reason: d.Reason, Digest: digest,
+			}); err != nil {
+				r.log.Error("ledger write failed", "source", src, "stable_id", id, "err", err)
+				t.Failed++
+				continue
+			}
+			if err := r.db.SetDisposition(src, id, it.Msg.Disposition, d.Reason, "", ""); err != nil {
+				r.log.Error("state write failed", "source", src, "stable_id", id, "err", err)
+				t.Failed++
+				continue
+			}
+			t.Transient++
+			continue
+		}
+
+		rule := d.Rule
+		if d.Layer == state.TriageLayerNone {
+			rule = ""
+		}
+		if err := r.db.UpsertTriageDecision(state.TriageDecision{
+			Source: src, StableID: id, Verdict: d.Verdict, Layer: d.Layer, Rule: rule, Reason: d.Reason, Digest: digest,
+		}); err != nil {
+			r.log.Error("ledger write failed", "source", src, "stable_id", id, "err", err)
+			t.Failed++
+			continue
+		}
+		if to, ok := it.Move(); ok {
+			res, err := r.writer.MoveNote(it.Msg.RelPath, to)
+			if err != nil {
+				t.Failed++
+				r.log.Error("move failed; the note stays where it is and is looked at again next run",
+					"source", src, "stable_id", id, "path", it.Msg.RelPath, "to", to, "err", err)
+				continue
+			}
+			if err := r.db.SetDisposition(src, id, to, d.Reason, d.RuleID(), digest); err != nil {
+				// The files moved and the row did not: exactly the state the
+				// next pass reconciles. Say so and stop, since a failing
+				// database will fail the next note too.
+				r.log.Error("the note moved but its row could not be updated; the next run reconciles it",
+					"source", src, "stable_id", id, "path", it.Msg.RelPath, "err", err)
+				t.Failed++
+				continue
+			}
+			if to == state.DispositionSpam {
+				t.MovedToSpam++
+			} else {
+				t.MovedBack++
+			}
+			r.log.Info("note moved", "source", src, "stable_id", id, "path", it.Msg.RelPath,
+				"to", to, "rule", d.RuleID(), "attach_dir", res.MovedAttachDir)
+			continue
+		}
+		if err := r.db.SetDisposition(src, id, it.Msg.Disposition, d.Reason, d.RuleID(), digest); err != nil {
+			r.log.Error("state write failed", "source", src, "stable_id", id, "err", err)
+			t.Failed++
+			continue
+		}
+		t.Settled++
+	}
+	return t
+}
+
+// reconcile finishes a move a crash interrupted: the .md is already under
+// it.FoundIn, so MoveNote only brings the attachment directory across, and
+// the row is set to the file's location — with the decision the ledger
+// recorded before the move when it agrees with where the file is, and a
+// plain "reconciled" otherwise.
+func (r *triageRun) reconcile(it triageItem) error {
+	src, id := it.Msg.Source, it.Msg.StableID
+	if _, err := r.writer.MoveNote(it.Msg.RelPath, it.FoundIn); err != nil {
+		return err
+	}
+	reason, rule, digest := "reconciled after an interrupted move", "reconcile", ""
+	if dec, ok, err := r.db.GetTriageDecision(src, id); err != nil {
+		return err
+	} else if ok && (dec.Verdict == state.TriageNoise) == (it.FoundIn == state.DispositionSpam) {
+		reason, rule, digest = dec.Reason, dec.Layer+":"+dec.Rule, dec.Digest
+		if dec.Layer == state.TriageLayerNone {
+			rule = ""
+		}
+	}
+	r.log.Warn("note found in the other tree; an earlier move was interrupted — reconciling the row to the file",
+		"source", src, "stable_id", id, "path", it.Msg.RelPath, "found_in", it.FoundIn)
+	return r.db.SetDisposition(src, id, it.FoundIn, reason, rule, digest)
+}
+
+// finishTriage prints the outcome.
+func finishTriage(out io.Writer, t triageTally) error {
+	fmt.Fprintf(out, "\nmoved %d note(s) to spam, %d back to the archive; %d left in place and settled\n", t.MovedToSpam, t.MovedBack, t.Settled)
+	if t.Reconciled > 0 {
+		fmt.Fprintf(out, "reconciled: %d note(s) an interrupted move had left half-recorded\n", t.Reconciled)
+	}
+	if t.Transient > 0 {
+		fmt.Fprintf(out, "model unavailable for %d note(s): left where they are, looked at again next run\n", t.Transient)
+	}
+	if t.NotRead > 0 {
+		fmt.Fprintf(out, "not read: %d note(s) (evicted, missing or unreadable) — see `save verify`\n", t.NotRead)
+	}
+	if t.Interrupted {
+		fmt.Fprintf(out, "interrupted — re-run `save triage` to continue; every note not yet recorded is looked at again\n")
+	}
+	if t.Failed > 0 {
+		fmt.Fprintf(out, "failed: %d note(s) — left unsettled, re-run `save triage` (details in the log above)\n", t.Failed)
+		return fmt.Errorf("%d note(s) could not be triaged", t.Failed)
+	}
+	return nil
 }
 
 // readNote reads a note for classification. An evicted iCloud placeholder
@@ -423,8 +654,14 @@ func printTriagePlan(out io.Writer, plan *triagePlan, files bool) {
 	}
 	fmt.Fprintf(out, "  rules: %s — %d keep, %d noise; header heuristics %s; model %s\n", rulesWhere, plan.Keep, plan.Noise, heur, model)
 
-	toSpam, toArchive, protected, kept, byModel, undecided, transient, evicted, missing, unreadable, perSource := plan.tally()
+	toSpam, toArchive, protected, kept, byModel, undecided, transient, evicted, missing, unreadable, reconcile, perSource := plan.tally()
 	fmt.Fprintf(out, "\n%d note(s) in scope\n", len(plan.Items))
+	if plan.Manual > 0 {
+		fmt.Fprintf(out, "  %d note(s) placed by `save untriage` are left alone (re-evaluate them with --reclassify --only manual)\n", plan.Manual)
+	}
+	if reconcile > 0 {
+		fmt.Fprintf(out, "  %d note(s) found in the other tree than the database records (an interrupted move) — the row is corrected first, then the verdict applied\n", reconcile)
+	}
 	if toSpam == 0 {
 		fmt.Fprintf(out, "  nothing to move to spam\n")
 	} else {
@@ -461,9 +698,13 @@ func printTriagePlan(out io.Writer, plan *triagePlan, files bool) {
 			fmt.Fprintf(out, "  %s  %s  %s\n    %s\n", it.Msg.RelPath, arrow, orNone(it.Decision.RuleID()), it.Decision.Reason)
 		}
 		for _, it := range plan.Items {
-			if it.Problem == "missing" {
-				fmt.Fprintf(out, "  missing: %s (%s/%s) — the state database names a note that is not in its tree; run `save verify`\n",
+			switch {
+			case it.Problem == "missing":
+				fmt.Fprintf(out, "  missing: %s (%s/%s) — the state database names a note that is in neither tree; run `save verify`\n",
 					it.Msg.RelPath, it.Msg.Source, it.Msg.StableID)
+			case it.FoundIn != "":
+				fmt.Fprintf(out, "  would reconcile: %s is in the %s tree but recorded in the %s tree\n",
+					it.Msg.RelPath, it.FoundIn, it.Msg.Disposition)
 			}
 		}
 	}

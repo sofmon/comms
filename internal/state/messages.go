@@ -161,6 +161,23 @@ func (d *DB) MessagesByRelPath(rel string) ([]Message, error) {
 	return out, nil
 }
 
+// MessagesByStableID returns every row with the given stable id, across
+// instances: a Gmail message id is unique only within one mailbox, so the
+// caller decides what to do with more than one hit. It is how
+// `save untriage <id>` finds a note without a path.
+func (d *DB) MessagesByStableID(stableID string) ([]Message, error) {
+	rows, err := d.sql.Query(`SELECT `+messageColumns+` FROM messages WHERE stable_id = ? ORDER BY source`, stableID)
+	if err != nil {
+		return nil, fmt.Errorf("state: messages by stable id %s: %w", stableID, err)
+	}
+	defer rows.Close()
+	out, err := scanMessages(rows)
+	if err != nil {
+		return nil, fmt.Errorf("state: messages by stable id %s: %w", stableID, err)
+	}
+	return out, nil
+}
+
 // SetDisposition records where a note now lives and why. It is the ONLY
 // writer of the triage columns, and it must be called AFTER the files are in
 // the tree it names: the disposition is the source of truth for location, so

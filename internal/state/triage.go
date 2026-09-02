@@ -145,8 +145,9 @@ type TriageScope struct {
 	Reclassify bool
 
 	// Only narrows a Reclassify to decisions a particular layer made:
-	// "llm" for rows whose disposition_rule is a model decision, "rules"
-	// for every other row. "" means all.
+	// "llm" for rows whose disposition_rule is a model decision, "manual"
+	// for rows `save untriage` placed, "rules" for every other row. ""
+	// means all.
 	Only string
 }
 
@@ -181,10 +182,12 @@ func (d *DB) MessagesForTriage(s TriageScope) ([]Message, error) {
 	case "":
 	case "llm":
 		where = append(where, "disposition_rule LIKE 'llm:%'")
+	case "manual":
+		where = append(where, "disposition_rule = 'manual'")
 	case "rules":
-		where = append(where, "(disposition_rule IS NULL OR disposition_rule NOT LIKE 'llm:%')")
+		where = append(where, "(disposition_rule IS NULL OR (disposition_rule NOT LIKE 'llm:%' AND disposition_rule <> 'manual'))")
 	default:
-		return nil, fmt.Errorf("state: messages for triage: unknown --only %q (rules or llm)", s.Only)
+		return nil, fmt.Errorf("state: messages for triage: unknown --only %q (rules, llm or manual)", s.Only)
 	}
 	rows, err := d.sql.Query(`
 		SELECT `+messageColumns+` FROM messages

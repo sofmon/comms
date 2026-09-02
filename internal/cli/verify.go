@@ -21,12 +21,14 @@ import (
 	"save/internal/state"
 )
 
-const verifyLong = `Audit the state database against the archive tree (read-only).
+const verifyLong = `Audit the state database against the archive and spam trees (read-only).
 
 Every archived email and rendered chat day is re-hashed and compared with the
 hash recorded when it was written; every completed attachment is checked for
 existence and size; and any file matching the archive naming pattern with no
-database row is reported as an orphan.
+database row is reported as an orphan. An email note is checked in the tree
+its row records — archive_root, or spam_root once noise triage filed it — and
+a note found in both trees, or only in the other one, is a discrepancy.
 
 Cloud-synced archives: when archive_root lives in iCloud Drive (or any other
 macOS FileProvider), "Optimize Mac Storage" may have EVICTED a file — the
@@ -145,6 +147,21 @@ func runVerifyWith(out io.Writer, o verifyOpts) error {
 	}
 
 	root := cfg.ArchiveRoot
+	// Email notes live in one of two trees, and the row says which. Every
+	// note is checked in its recorded tree and looked for in the other: a
+	// note in both, or only in the wrong one, is a discrepancy.
+	rootOf := func(d state.Disposition) string {
+		if d == state.DispositionSpam {
+			return cfg.SpamRoot
+		}
+		return root
+	}
+	otherOf := func(d state.Disposition) state.Disposition {
+		if d == state.DispositionSpam {
+			return state.DispositionArchive
+		}
+		return state.DispositionSpam
+	}
 	var problems int
 	report := func(format string, args ...any) {
 		problems++
@@ -173,30 +190,47 @@ func runVerifyWith(out io.Writer, o verifyOpts) error {
 		}
 		return sum, false, err
 	}
-	// known collects every rel path a DB row claims, for the orphan pass.
-	known := make(map[string]bool)
+	// known collects every rel path a DB row claims, for the orphan pass:
+	// email notes with the tree their row records, chat day files and
+	// attachments with the archive tree (chat is never triaged).
+	known := make(map[string]state.Disposition)
 
-	// Every archived email's file must exist with the recorded content hash
-	// (email .md files are immutable after write).
-	var emails int
-	err = forEachRow(ro, `SELECT source, stable_id, rel_path, content_hash FROM messages`,
+	// Every archived email's file must exist, in the tree its row records
+	// and only there, with the recorded content hash (email .md files are
+	// immutable after write, and a move does not change their bytes).
+	var emails, spamEmails int
+	err = forEachRow(ro, `SELECT source, stable_id, rel_path, content_hash, disposition FROM messages`,
 		func(scan func(...any) error) error {
-			var source, id, rel, hash string
-			if err := scan(&source, &id, &rel, &hash); err != nil {
+			var source, id, rel, hash, dispStr string
+			if err := scan(&source, &id, &rel, &hash, &dispStr); err != nil {
 				return err
 			}
+			disp := state.Disposition(dispStr)
 			emails++
-			known[rel] = true
-			sum, skipped, err := hashOrSkip(filepath.Join(root, filepath.FromSlash(rel)))
+			if disp == state.DispositionSpam {
+				spamEmails++
+			}
+			known[rel] = disp
+			other := otherOf(disp)
+			_, otherErr := os.Lstat(filepath.Join(rootOf(other), filepath.FromSlash(rel)))
+			inOther := otherErr == nil
+			sum, skipped, err := hashOrSkip(filepath.Join(rootOf(disp), filepath.FromSlash(rel)))
 			switch {
 			case skipped:
 				// Evicted to the cloud; counted, not checked.
+			case errors.Is(err, fs.ErrNotExist) && inOther:
+				report("note recorded in the %s tree is in the %s tree: %s (%s/%s) — an interrupted triage move; `save triage` reconciles it", disp, other, rel, source, id)
+				return nil
 			case errors.Is(err, fs.ErrNotExist):
-				report("missing file: %s (%s/%s)", rel, source, id)
+				report("missing file: %s (%s/%s) — in neither tree", rel, source, id)
+				return nil
 			case err != nil:
 				report("unreadable file: %s: %v", rel, err)
 			case sum != hash:
 				report("content hash mismatch: %s (%s/%s)", rel, source, id)
+			}
+			if inOther {
+				report("note exists in both trees: %s (%s/%s, recorded in the %s tree) — remove the stray copy under %s", rel, source, id, disp, rootOf(other))
 			}
 			return nil
 		})
@@ -225,7 +259,7 @@ func runVerifyWith(out io.Writer, o verifyOpts) error {
 				return err
 			}
 			chatDays++
-			known[rel] = true
+			known[rel] = state.DispositionArchive
 			if hash == "" {
 				return nil
 			}
@@ -289,7 +323,7 @@ func runVerifyWith(out io.Writer, o verifyOpts) error {
 				return err
 			}
 			attsDone++
-			known[rel] = true
+			known[rel] = state.DispositionArchive
 			info, err := os.Stat(filepath.Join(root, filepath.FromSlash(rel)))
 			switch {
 			case errors.Is(err, fs.ErrNotExist):
@@ -305,46 +339,53 @@ func runVerifyWith(out io.Writer, o verifyOpts) error {
 		return err
 	}
 
-	// Orphans: day-dir .md files matching the naming pattern with no row.
-	// (Email attachment files inside .d dirs are not DB-tracked — they are
-	// listed in each .md's frontmatter — so the orphan scan covers .md only.)
+	// Orphans: day-dir .md files matching the naming pattern with no row, in
+	// either tree. A file whose row records the OTHER tree was already
+	// reported by the row pass above. (Email attachment files inside .d
+	// dirs are not DB-tracked — they are listed in each .md's frontmatter —
+	// so the orphan scan covers .md only.)
 	var orphans int
-	walkErr := filepath.WalkDir(root, func(p string, de fs.DirEntry, err error) error {
-		if err != nil {
-			if p == root && errors.Is(err, fs.ErrNotExist) {
-				return fs.SkipAll // nothing archived yet
+	for _, tree := range []struct {
+		disp state.Disposition
+		root string
+	}{{state.DispositionArchive, root}, {state.DispositionSpam, cfg.SpamRoot}} {
+		walkErr := filepath.WalkDir(tree.root, func(p string, de fs.DirEntry, err error) error {
+			if err != nil {
+				if p == tree.root && errors.Is(err, fs.ErrNotExist) {
+					return fs.SkipAll // nothing archived (or filed) yet
+				}
+				return err
 			}
-			return err
-		}
-		if de.IsDir() {
-			if de.Name() == archive.TempDirName && filepath.Dir(p) == root {
-				return fs.SkipDir // writer scratch dir; swept, never archived
+			if de.IsDir() {
+				if de.Name() == archive.TempDirName && filepath.Dir(p) == tree.root {
+					return fs.SkipDir // writer scratch dir; swept, never archived
+				}
+				return nil
+			}
+			if !de.Type().IsRegular() {
+				return nil
+			}
+			rel, rerr := filepath.Rel(tree.root, p)
+			if rerr != nil {
+				return rerr
+			}
+			rel = filepath.ToSlash(rel)
+			if !dayRelPath.MatchString(rel) || !archiveMDName.MatchString(de.Name()) {
+				return nil
+			}
+			if _, ok := known[rel]; !ok {
+				orphans++
+				report("orphan file in the %s tree (matches the archive naming pattern but has no DB row): %s", tree.disp, rel)
 			}
 			return nil
+		})
+		if walkErr != nil {
+			return fmt.Errorf("scan %s tree: %w", tree.disp, walkErr)
 		}
-		if !de.Type().IsRegular() {
-			return nil
-		}
-		rel, rerr := filepath.Rel(root, p)
-		if rerr != nil {
-			return rerr
-		}
-		rel = filepath.ToSlash(rel)
-		if !dayRelPath.MatchString(rel) || !archiveMDName.MatchString(de.Name()) {
-			return nil
-		}
-		if !known[rel] {
-			orphans++
-			report("orphan file (matches the archive naming pattern but has no DB row): %s", rel)
-		}
-		return nil
-	})
-	if walkErr != nil {
-		return fmt.Errorf("scan archive tree: %w", walkErr)
 	}
 
-	fmt.Fprintf(out, "checked %d emails, %d chat day files, %d completed attachments; %d orphan(s)\n",
-		emails, chatDays, attsDone, orphans)
+	fmt.Fprintf(out, "checked %d emails (%d in the spam tree), %d chat day files, %d completed attachments; %d orphan(s)\n",
+		emails, spamEmails, chatDays, attsDone, orphans)
 	if evicted > 0 {
 		fmt.Fprintf(out, "%d file(s) skipped (evicted from local storage by iCloud) — "+
 			"their contents were not checked; re-run with --materialize to download and hash them\n", evicted)
@@ -352,7 +393,7 @@ func runVerifyWith(out io.Writer, o verifyOpts) error {
 	if problems > 0 {
 		return fmt.Errorf("verify found %d discrepanc(ies)", problems)
 	}
-	fmt.Fprintln(out, "verify: OK — state database and archive tree agree")
+	fmt.Fprintln(out, "verify: OK — state database, archive tree and spam tree agree")
 	return nil
 }
 

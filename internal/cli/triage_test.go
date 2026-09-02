@@ -164,21 +164,15 @@ func TestTriageDryRunScopeAndSelectors(t *testing.T) {
 		t.Errorf("a chat-only selection: err = %v", err)
 	}
 	for name, o := range map[string]triageOpts{
-		"bad day":                    {day: "yesterday"},
-		"day and since":              {day: "2026-08-07", since: "2026-08-01"},
-		"only without reclassify":    {onlyLayer: "llm"},
-		"unknown only":               {reclassify: true, onlyLayer: "vibes"},
-		"explain with a selector":    {explain: "x.md", day: "2026-08-07"},
-		"apply is not in this build": {},
+		"bad day":                 {day: "yesterday"},
+		"day and since":           {day: "2026-08-07", since: "2026-08-01"},
+		"only without reclassify": {onlyLayer: "llm"},
+		"unknown only":            {reclassify: true, onlyLayer: "vibes"},
+		"explain with a selector": {explain: "x.md", day: "2026-08-07"},
 	} {
-		if _, err := run(o); err == nil && name != "apply is not in this build" {
+		if _, err := run(o); err == nil {
 			t.Errorf("%s: accepted", name)
 		}
-	}
-	// Without --dry-run the command refuses rather than pretending.
-	var out bytes.Buffer
-	if err := runTriage(&out, triageOpts{}); err == nil {
-		t.Error("applying a plan succeeded in a build without the mover")
 	}
 }
 

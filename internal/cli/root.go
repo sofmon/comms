@@ -45,6 +45,7 @@ func newRoot() *cobra.Command {
 		newStatusCmd(),
 		newRefetchCmd(),
 		newTriageCmd(),
+		newUntriageCmd(),
 		newDoctorCmd(),
 		newVerifyCmd(),
 		newVersionCmd(),
