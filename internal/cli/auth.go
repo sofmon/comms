@@ -17,6 +17,7 @@ import (
 	"comms/internal/config"
 	"comms/internal/googleauth"
 	"comms/internal/paths"
+	fastmailsender "comms/internal/sender/fastmail"
 	"comms/internal/source/fastmail"
 	"comms/internal/state"
 )
@@ -47,8 +48,8 @@ func googleSetup(acct config.GoogleAccount) string {
 
 const fastmailSetupHintFmt = `FastMail token setup for account %[1]q (%[2]s):
   1. FastMail web → Settings → Privacy & Security → API tokens → New token
-  2. Type: JMAP; scope: read-only. The token is shown exactly once — paste it
-     here right away. (API tokens are not available on Basic plans; there is
+  2. Type: JMAP; choose read-only for archiving alone, or write/send access
+     when send_email = true. The token is shown exactly once — paste it here. (API tokens are not available on Basic plans; there is
      no JMAP fallback for those.)
   Then run: comms auth fastmail %[1]s`
 
@@ -177,7 +178,7 @@ func authorizeGoogle(ctx context.Context, out io.Writer, acct config.GoogleAccou
 	if len(scopes) == 0 {
 		// Validate rejects this, so it can only mean the config changed
 		// under us; refuse rather than store a scopeless grant.
-		return errors.New("this account archives neither gmail nor chat — nothing to authorize")
+		return errors.New("this account has no enabled Google archive or send capability — nothing to authorize")
 	}
 	fmt.Fprintf(out, "Requesting scopes:\n")
 	for _, s := range scopes {
@@ -245,8 +246,13 @@ func runAuthFastmail(cmd *cobra.Command, arg string) error {
 	}
 
 	fmt.Fprintf(out, "Authorizing [[fastmail]] %q — account %s\n", acct.Label, acct.Account)
-	fmt.Fprintln(out, "Create a read-only JMAP API token in the FastMail settings")
-	fmt.Fprintln(out, "(Settings → Privacy & Security → API tokens → New token, type JMAP, read-only).")
+	if acct.SendEmail {
+		fmt.Fprintln(out, "Create a JMAP API token with write/send access in the FastMail settings")
+		fmt.Fprintln(out, "(a read-only token can archive mail but cannot submit outgoing messages).")
+	} else {
+		fmt.Fprintln(out, "Create a read-only JMAP API token in the FastMail settings")
+		fmt.Fprintln(out, "(Settings → Privacy & Security → API tokens → New token, type JMAP, read-only).")
+	}
 	// golang.org/x/term is not among the pinned dependencies, so the prompt
 	// cannot disable echo; say so instead of pretending. The env variable is
 	// per label; the unsuffixed name works only with a single account.
@@ -275,6 +281,12 @@ func runAuthFastmail(cmd *cobra.Command, arg string) error {
 	fmt.Fprintln(out, "Verifying the token against the FastMail JMAP session endpoint...")
 	if err := src.Check(ctx); err != nil {
 		return fmt.Errorf("token verification failed: %w\n\n%s", err, fastmailSetup(acct))
+	}
+	if acct.SendEmail {
+		sender := fastmailsender.New(acct, func() (string, error) { return token, nil })
+		if err := sender.Check(ctx); err != nil {
+			return fmt.Errorf("token can read FastMail but cannot send: %w\n\n%s", err, fastmailSetup(acct))
+		}
 	}
 
 	if err := paths.EnsureDir(paths.ConfigDir()); err != nil {

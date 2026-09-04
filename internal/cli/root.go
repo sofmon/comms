@@ -1,8 +1,9 @@
 // Package cli wires the cobra command tree: init, auth google|fastmail,
-// sync, run, status, refetch, triage, doctor, verify, version. Shared construction (config,
+// sync, send, run, status, refetch, triage, doctor, verify, version. Shared construction (config,
 // lock, state DB, timezone pin, writer, sources) lives in app.go; the
-// reporting commands read the state database read-only and take no lock, so
-// they work beside a running daemon.
+// reporting commands read the state database read-only. Outbound sending uses
+// its own short-lived lock and disjoint ledger rows, so it works beside a
+// running archive daemon.
 //
 // Everything below the config is keyed by INSTANCE — one account's one
 // source kind, e.g. "gmail:work". buildSources turns cfg.Instances() into
@@ -27,7 +28,7 @@ func newRoot() *cobra.Command {
 	var verbose bool
 	root := &cobra.Command{
 		Use:           "comms",
-		Short:         "comms archives Gmail, Google Chat, and FastMail locally as Markdown",
+		Short:         "comms archives and sends Gmail, Google Chat, and FastMail messages",
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		PersistentPreRun: func(cmd *cobra.Command, args []string) {
@@ -41,6 +42,7 @@ func newRoot() *cobra.Command {
 		newInitCmd(),
 		newAuthCmd(),
 		newSyncCmd(),
+		newSendCmd(),
 		newRunCmd(),
 		newStatusCmd(),
 		newRefetchCmd(),

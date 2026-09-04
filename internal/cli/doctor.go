@@ -22,6 +22,7 @@ import (
 	"comms/internal/paths"
 	"comms/internal/policy"
 	"comms/internal/ratelimit"
+	fastmailsender "comms/internal/sender/fastmail"
 	"comms/internal/source/fastmail"
 	"comms/internal/source/gchat"
 	"comms/internal/source/gmail"
@@ -135,6 +136,23 @@ func runDoctorWith(out io.Writer, env cloudEnv) error {
 			default:
 				d.info("state database exists but no timezone pinned yet — the next sync pins %q", zone)
 			}
+		}
+	}
+
+	// The filesystem outbox is intentionally separate from both archive trees.
+	for _, dir := range []string{cfg.Sending.SendDir(), cfg.Sending.ArchivedDir()} {
+		info, err := os.Stat(dir)
+		switch {
+		case errors.Is(err, fs.ErrNotExist):
+			d.info("outbox directory %s will be created by the first `comms send`", dir)
+		case err != nil:
+			d.bad("", "outbox directory %s: %v", dir, err)
+		case !info.IsDir():
+			d.bad("", "outbox path %s is not a directory", dir)
+		case info.Mode().Perm()&0o077 != 0:
+			d.warn("outbox directory %s has permissions %04o; `comms send` will tighten them to 0700", dir, info.Mode().Perm())
+		default:
+			d.ok("outbox directory %s (0700)", dir)
 		}
 	}
 
@@ -368,6 +386,12 @@ func (d *doctorReport) checkGoogleAccount(cfg *config.Config, acct config.Google
 	if acct.Chat {
 		kinds = append(kinds, state.SourceGChat)
 	}
+	if acct.SendEmail {
+		kinds = append(kinds, "send-email")
+	}
+	if acct.SendChat {
+		kinds = append(kinds, "send-chat")
+	}
 	d.section("[[google]] %q — %s (%s)", acct.Label, acct.Account, strings.Join(kinds, ", "))
 
 	hint := googleSetup(acct)
@@ -478,6 +502,14 @@ func (d *doctorReport) checkFastMailAccount(acct config.FastMailAccount, writer 
 		return
 	}
 	d.ok("%s reachable and authorized for %s", id, acct.Account)
+	if acct.SendEmail {
+		sender := fastmailsender.New(acct, tokens)
+		if err := sender.Check(ctx); err != nil {
+			d.bad(fastmailSetup(acct), "%s submission check failed: %v", id, err)
+			return
+		}
+		d.ok("%s exposes JMAP EmailSubmission", id)
+	}
 }
 
 func indent(s, prefix string) string {

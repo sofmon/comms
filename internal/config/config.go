@@ -62,6 +62,10 @@ type Config struct {
 	// archive_root, nor archive_root inside it — see Validate.
 	SpamRoot string `toml:"spam_root"`
 
+	// Sending.Root is a dedicated filesystem outbox. It contains send/ for
+	// drafts and archived/ for files that were delivered successfully.
+	Sending Sending `toml:"sending"`
+
 	Timezone    string            `toml:"timezone"`
 	Daemon      Daemon            `toml:"daemon"`
 	Attachments Attachments       `toml:"attachments"`
@@ -78,6 +82,18 @@ type Daemon struct {
 	FastMailInterval Duration `toml:"fastmail_interval"`
 }
 
+// Sending configures the filesystem outbox. Keeping one root makes send and
+// archived siblings, so the success transition can be one atomic rename.
+type Sending struct {
+	Root string `toml:"root"`
+}
+
+// SendDir is the directory scanned by `comms send`.
+func (s Sending) SendDir() string { return filepath.Join(s.Root, "send") }
+
+// ArchivedDir is the directory successful outgoing files are moved into.
+func (s Sending) ArchivedDir() string { return filepath.Join(s.Root, "archived") }
+
 // GoogleAccount is one [[google]] block: a single Google identity whose one
 // OAuth grant covers both the Gmail and the Chat instance it enables.
 type GoogleAccount struct {
@@ -85,6 +101,11 @@ type GoogleAccount struct {
 	Account string `toml:"account"` // the identity's email address
 	Gmail   bool   `toml:"gmail"`   // archive this account's mail
 	Chat    bool   `toml:"chat"`    // archive this account's Google Chat
+
+	// Sending is opt-in per capability. Turning one on deliberately grows the
+	// account's OAuth scope set and therefore requires re-authorization.
+	SendEmail bool `toml:"send_email"`
+	SendChat  bool `toml:"send_chat"`
 
 	IncludeDrafts    bool `toml:"include_drafts"`
 	MirrorDriveFiles bool `toml:"mirror_drive_files"`
@@ -104,6 +125,10 @@ type GoogleAccount struct {
 type FastMailAccount struct {
 	Label   string `toml:"label"`
 	Account string `toml:"account"`
+
+	// SendEmail requires a JMAP token with write/submission access rather than
+	// the read-only token sufficient for archiving.
+	SendEmail bool `toml:"send_email"`
 
 	// Resolved credential locations (never read from TOML).
 	TokenFilePath string `toml:"-"` // <configdir>/fastmail-token-<label>
@@ -179,6 +204,16 @@ func Load(path string) (*Config, error) {
 		return nil, fmt.Errorf("%s: archive_root: %w", path, err)
 	}
 	cfg.ArchiveRoot = root
+	if v := os.Getenv("COMMS_OUTBOX_ROOT"); v != "" {
+		cfg.Sending.Root = v
+	}
+	if cfg.Sending.Root == "" {
+		// A dedicated sibling avoids placing control files inside the archive
+		// tree while keeping send/ and archived/ on the same volume by default.
+		cfg.Sending.Root = cfg.ArchiveRoot + "-outbox"
+	} else if cfg.Sending.Root, err = expandTilde(cfg.Sending.Root); err != nil {
+		return nil, fmt.Errorf("%s: sending.root: %w", path, err)
+	}
 	if v := os.Getenv("COMMS_SPAM_ROOT"); v != "" {
 		cfg.SpamRoot = v
 	}
@@ -385,6 +420,24 @@ func (c *Config) Validate() error {
 	case c.ArchiveRoot != "" && paths.UnderDir(c.SpamRoot, c.ArchiveRoot):
 		errs = append(errs, fmt.Errorf("archive_root %q is inside spam_root %q — the spam tree must sit beside the archive, never around it", c.ArchiveRoot, c.SpamRoot))
 	}
+	if c.Sending.Root == "" {
+		errs = append(errs, errors.New("sending.root must not be empty"))
+	} else {
+		for _, other := range []struct {
+			name string
+			root string
+		}{{"archive_root", c.ArchiveRoot}, {"spam_root", c.SpamRoot}} {
+			if other.root == "" {
+				continue
+			}
+			switch {
+			case paths.UnderDir(other.root, c.Sending.Root):
+				errs = append(errs, fmt.Errorf("sending.root %q is inside %s %q — the outbox must be a separate sibling tree", c.Sending.Root, other.name, other.root))
+			case paths.UnderDir(c.Sending.Root, other.root):
+				errs = append(errs, fmt.Errorf("%s %q is inside sending.root %q — the outbox must be a separate sibling tree", other.name, other.root, c.Sending.Root))
+			}
+		}
+	}
 	if c.Timezone == "" {
 		errs = append(errs, errors.New(`timezone must not be empty (use "local" or an IANA name like "Europe/Amsterdam")`))
 	} else if c.Timezone != "local" {
@@ -438,8 +491,8 @@ func (c *Config) Validate() error {
 		if g.Account == "" {
 			errs = append(errs, fmt.Errorf("%s: account is required (the Google identity's email address)", ref))
 		}
-		if !g.Gmail && !g.Chat {
-			errs = append(errs, fmt.Errorf("%s: nothing to archive — set gmail = true and/or chat = true, or delete the block", ref))
+		if !g.Gmail && !g.Chat && !g.SendEmail && !g.SendChat {
+			errs = append(errs, fmt.Errorf("%s: nothing to archive or send — set gmail/chat for archiving and/or send_email/send_chat for sending, or delete the block", ref))
 		}
 		if g.Reactions {
 			errs = append(errs, fmt.Errorf("%s: reactions = true is not implemented in this version — remove the option or set it to false", ref))
@@ -452,8 +505,8 @@ func (c *Config) Validate() error {
 			errs = append(errs, fmt.Errorf("%s: account is required", ref))
 		}
 	}
-	if len(c.Instances()) == 0 {
-		errs = append(errs, errors.New("no accounts are enabled — add at least one [[google]] block (with gmail and/or chat = true) or one [[fastmail]] block"))
+	if len(c.Instances()) == 0 && len(c.SendingInstances()) == 0 {
+		errs = append(errs, errors.New("no accounts are enabled — configure archiving and/or sending on at least one [[google]] or [[fastmail]] block"))
 	}
 	return errors.Join(errs...)
 }
@@ -501,6 +554,29 @@ func (c *Config) Instances() []Instance {
 // InstancesForKind returns the enabled instances of one source kind
 // (state.SourceGmail, state.SourceGChat, state.SourceFastmail) in the same
 // order Instances uses.
+// SendingInstances returns each explicitly enabled outbound capability in
+// deterministic provider order. They use the same instance ids as the
+// matching archive connectors, but do not imply that archiving is enabled.
+func (c *Config) SendingInstances() []Instance {
+	out := make([]Instance, 0, 2*len(c.Google)+len(c.FastMail))
+	for _, g := range c.Google {
+		if g.SendEmail {
+			out = append(out, newInstance(state.SourceGmail, g.Label, g.Account))
+		}
+	}
+	for _, g := range c.Google {
+		if g.SendChat {
+			out = append(out, newInstance(state.SourceGChat, g.Label, g.Account))
+		}
+	}
+	for _, f := range c.FastMail {
+		if f.SendEmail {
+			out = append(out, newInstance(state.SourceFastmail, f.Label, f.Account))
+		}
+	}
+	return out
+}
+
 func (c *Config) InstancesForKind(kind string) []Instance {
 	var out []Instance
 	for _, in := range c.Instances() {
@@ -667,6 +743,12 @@ archive_root = "~/Archive"
 # the very first message, regardless of where the machine travels.
 timezone     = "local"
 
+# Filesystem outbox. The root contains send/ and archived/ as siblings.
+# If omitted, it defaults to archive_root + "-outbox" (for example,
+# ~/Archive-outbox). COMMS_OUTBOX_ROOT overrides it.
+[sending]
+# root = "~/Comms"
+
 [daemon]
 # Poll intervals are global per source kind: every account of a kind polls
 # on the same schedule.
@@ -795,6 +877,8 @@ label   = "work"
 account = "you@example.com"
 gmail   = true
 chat    = true
+send_email = false             # true adds gmail.compose; re-authorize
+send_chat  = false             # true adds chat.messages.create; re-authorize
 include_drafts     = false
 mirror_drive_files = false      # true adds drive.readonly (re-run ` + "`comms auth google work`" + `)
 show_deleted       = false
@@ -809,11 +893,14 @@ label   = "personal"
 account = "you@example.net"
 gmail   = true
 chat    = true
+send_email = false
+send_chat  = false
 client_file = "~/.config/comms/google-client-personal.json"
 
 [[fastmail]]
 label   = "fm"
 account = "you@fastmail.example"
+send_email = false             # true requires a write/send JMAP token
 `
 
 // WriteSkeleton writes the commented example config for `comms init` with

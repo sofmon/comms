@@ -82,9 +82,13 @@ Next steps:
      project and client JSON — point that block's client_file at it.
   3. comms auth google <label>     # once per [[google]] account (or --all)
   4. comms auth fastmail <label>   # once per [[fastmail]] account
-  5. comms sync        # first backfill; Gmail can take hours and is resumable
-  6. comms run         # daemon — see docs/launchd/com.user.comms.plist for autostart
-  7. comms triage --dry-run   # later: see which notes the rules in triage.toml
+  5. To send, opt in with send_email/send_chat, re-authorize as described
+     in config.toml, create Markdown drafts under the configured send/, then:
+       comms send --dry-run
+       comms send
+  6. comms sync        # first backfill; Gmail can take hours and is resumable
+  7. comms run         # daemon — see docs/launchd/com.user.comms.plist for autostart
+  8. comms triage --dry-run   # later: see which notes the rules in triage.toml
                              # would file under spam_root, then run it for real
 `, cfgPath, cfgDir)
 	return nil

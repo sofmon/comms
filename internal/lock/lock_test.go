@@ -20,7 +20,7 @@ func TestAcquireContention(t *testing.T) {
 	// process contends exactly like a second process would.
 	if _, err := Acquire(dir); err == nil {
 		t.Fatal("second Acquire should fail while the lock is held")
-	} else if !strings.Contains(err.Error(), "another comms instance is running") {
+	} else if !strings.Contains(err.Error(), "another comms operation is running") {
 		t.Fatalf("contention error should say another instance is running, got: %v", err)
 	}
 
@@ -56,6 +56,26 @@ func TestLockFileDetails(t *testing.T) {
 	}
 	if got, want := strings.TrimSpace(string(data)), strconv.Itoa(os.Getpid()); got != want {
 		t.Errorf("lock file records pid %q, want %q", got, want)
+	}
+}
+
+func TestAcquireNamedIsIndependent(t *testing.T) {
+	dir := t.TempDir()
+	releaseArchive, err := Acquire(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer releaseArchive()
+	releaseSend, err := AcquireNamed(dir, "send.lock")
+	if err != nil {
+		t.Fatalf("named lock should coexist with archive lock: %v", err)
+	}
+	defer releaseSend()
+	if _, err := AcquireNamed(dir, "send.lock"); err == nil {
+		t.Fatal("second send lock should contend")
+	}
+	if _, err := AcquireNamed(dir, "../bad"); err == nil {
+		t.Fatal("unsafe lock name accepted")
 	}
 }
 

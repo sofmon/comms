@@ -75,6 +75,10 @@ go.mod.
 15. `render_version` in email frontmatter is a layout version: bump `archive.EmailRenderVersion`
     when the frontmatter shape changes; existing notes are never rewritten for it, and
     triage treats "no headers on a v1 note" as "nobody looked", not "none present".
+16. Outbound delivery is EXPLICIT only (`comms send`), never a daemon task. Drafts
+    move from `<sending.root>/send` to `archived` only after remote acceptance is in
+    `outgoing_messages`. Provider senders must reconcile `sending` rows by the stable
+    message key; a transport error must never cause a blind automatic duplicate.
 
 ## Style
 

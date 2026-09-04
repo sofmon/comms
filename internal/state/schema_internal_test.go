@@ -115,6 +115,38 @@ func TestMigrateV1ToV2(t *testing.T) {
 
 // TestOpenRefusesANewerSchema: a database written by a later build must not
 // be silently reinterpreted by this one.
+// TestMigrateV2ToV3 proves an existing comms database gains the outbound
+// ledger without disturbing its archive schema.
+func TestMigrateV2ToV3(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "state.db")
+	raw, err := sql.Open("sqlite", "file:"+path+"?_pragma=journal_mode(WAL)")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := raw.Exec(schemaSQL()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := raw.Exec(schemaV2SQL()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := raw.Exec(`PRAGMA user_version = 2`); err != nil {
+		t.Fatal(err)
+	}
+	raw.Close()
+
+	db, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if _, err := db.PrepareOutgoing(Outgoing{
+		MessageKey: "m1", Source: "gmail:work", Kind: "email",
+		DraftRelPath: "x.md", ContentHash: "hash",
+	}); err != nil {
+		t.Fatalf("v3 outgoing ledger unusable after migration: %v", err)
+	}
+}
+
 func TestOpenRefusesANewerSchema(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "state.db")
 	db, err := Open(path)

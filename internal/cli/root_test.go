@@ -11,7 +11,7 @@ func TestCommandRegistration(t *testing.T) {
 	for _, c := range root.Commands() {
 		have[c.Name()] = true
 	}
-	for _, want := range []string{"init", "auth", "sync", "run", "status", "refetch", "triage", "untriage", "doctor", "verify", "version"} {
+	for _, want := range []string{"init", "auth", "sync", "send", "run", "status", "refetch", "triage", "untriage", "doctor", "verify", "version"} {
 		if !have[want] {
 			t.Errorf("subcommand %q is not registered", want)
 		}

@@ -15,7 +15,7 @@ import (
 func clearEnv(t *testing.T) {
 	t.Helper()
 	for _, k := range []string{
-		"COMMS_CONFIG_DIR", "COMMS_ARCHIVE_ROOT", "COMMS_FASTMAIL_TOKEN",
+		"COMMS_CONFIG_DIR", "COMMS_ARCHIVE_ROOT", "COMMS_OUTBOX_ROOT", "COMMS_FASTMAIL_TOKEN",
 		"COMMS_GOOGLE_CLIENT_FILE", "COMMS_GOOGLE_TOKEN_FILE",
 		"COMMS_FASTMAIL_TOKEN_FM", "COMMS_FASTMAIL_TOKEN_FM_TWO",
 		"COMMS_GOOGLE_CLIENT_FILE_WORK", "COMMS_GOOGLE_TOKEN_FILE_WORK",
@@ -720,4 +720,72 @@ func TestResolveTimezoneLocal(t *testing.T) {
 			t.Errorf("name = %q, want Europe/Berlin", name)
 		}
 	})
+}
+
+func TestSendingConfigAndInstances(t *testing.T) {
+	clearEnv(t)
+	t.Setenv("COMMS_CONFIG_DIR", t.TempDir())
+	base := t.TempDir()
+	cfg, err := Load(writeConfig(t, `archive_root = "`+filepath.Join(base, "archive")+`"
+[sending]
+root = "`+filepath.Join(base, "outbox")+`"
+[[google]]
+label = "work"
+account = "you@example.com"
+send_email = true
+send_chat = true
+[[fastmail]]
+label = "fm"
+account = "you@fastmail.example"
+send_email = true
+`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := cfg.Sending.SendDir(), filepath.Join(base, "outbox", "send"); got != want {
+		t.Errorf("SendDir = %q, want %q", got, want)
+	}
+	got := cfg.SendingInstances()
+	want := []string{"gmail:work", "gchat:work", "fastmail:fm"}
+	if len(got) != len(want) {
+		t.Fatalf("SendingInstances = %+v", got)
+	}
+	for i := range want {
+		if got[i].ID != want[i] {
+			t.Errorf("SendingInstances[%d] = %+v, want %s", i, got[i], want[i])
+		}
+	}
+	if len(cfg.Instances()) != 1 || cfg.Instances()[0].ID != "fastmail:fm" {
+		t.Fatalf("archive Instances = %+v; send-only Google must not become archive sources", cfg.Instances())
+	}
+}
+
+func TestSendingRootDefaultOverrideAndNesting(t *testing.T) {
+	clearEnv(t)
+	t.Setenv("COMMS_CONFIG_DIR", t.TempDir())
+	base := t.TempDir()
+	archive := filepath.Join(base, "archive")
+	cfg, err := Load(writeConfig(t, `archive_root = "`+archive+`"`+minimalValid))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := cfg.Sending.Root, archive+"-outbox"; got != want {
+		t.Fatalf("default sending.root = %q, want %q", got, want)
+	}
+
+	override := filepath.Join(base, "custom")
+	t.Setenv("COMMS_OUTBOX_ROOT", override)
+	cfg, err = Load(writeConfig(t, `archive_root = "`+archive+`"`+minimalValid))
+	if err != nil || cfg.Sending.Root != override {
+		t.Fatalf("override sending.root = %q, %v", cfg.Sending.Root, err)
+	}
+
+	t.Setenv("COMMS_OUTBOX_ROOT", "")
+	_, err = Load(writeConfig(t, `archive_root = "`+archive+`"
+[sending]
+root = "`+filepath.Join(archive, "outbox")+`"
+`+minimalValid))
+	if err == nil || !strings.Contains(err.Error(), "separate sibling") {
+		t.Fatalf("nested outbox error = %v", err)
+	}
 }

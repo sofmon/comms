@@ -1,11 +1,11 @@
 # comms
 
-`comms` archives your communication locally as Markdown: **Gmail**, **Google Chat**
-(Workspace), and **FastMail** in one merged, portable folder tree you own.
+`comms` archives your communication locally as Markdown and sends file-backed
+outgoing messages through **Gmail**, **Google Chat** (Workspace), and **FastMail**.
 
 > **This is a personal-use tool, not a hosted service.** It runs on your machine under
-> your own credentials, and nothing is ever uploaded anywhere. Before it can fetch
-> anything you need to bring:
+> your own credentials. Archive data stays local; only an explicit `comms send`
+> transmits a draft to its configured mail or Chat provider. Before use, bring:
 >
 > - **your own Google Cloud OAuth client** (a Desktop-app client ID with the Gmail and
 >   Google Chat APIs enabled) — see [Google setup](#google-setup-once-per-account);
@@ -26,6 +26,8 @@
   mixed day directory never collides.
 - Runs as a daemon (or one-shot), syncs incrementally, survives crashes and restarts,
   and re-runs are byte-identical no-ops.
+- Sends only on an explicit `comms send`: valid Markdown drafts move atomically from
+  `send/` to `archived/`; failures stay put and the daemon never sends.
 
 ```
 ~/Archive/2026/08/07/
@@ -63,6 +65,8 @@ comms auth google work       # one-time browser consent, per [[google]] account
 comms auth google personal   # …or `comms auth google --all` to do every one in turn
 comms auth fastmail fm       # paste that account's FastMail API token
 comms sync            # first backfill — Gmail can take hours; safe to interrupt/resume
+comms send --dry-run   # validate outgoing Markdown files without sending
+comms send             # explicitly send all valid drafts and archive successes
 comms run             # daemon; or install the launchd plist for autostart
 ```
 
@@ -93,6 +97,92 @@ comms sync --source gmail:work --source fastmail:fm
 `--full` and `--retry-failed` apply only to the selected instances; other accounts' state
 is untouched.
 
+## Filesystem outbox
+
+Sending is deliberately opt-in and never part of `comms run`. Set the outbound
+capability on each account you want to use:
+
+```toml
+[sending]
+root = "~/Comms"               # contains ~/Comms/send and ~/Comms/archived
+
+[[google]]
+label = "work"
+account = "you@example.com"
+gmail = true
+chat = true
+send_email = true
+send_chat = true
+
+[[fastmail]]
+label = "fm"
+account = "you@fastmail.example"
+send_email = true
+```
+
+If `[sending].root` is omitted, it defaults to `archive_root + "-outbox"`; with
+`archive_root = "~/Archive"`, drafts go in `~/Archive-outbox/send`. The environment
+override is `COMMS_OUTBOX_ROOT`. The outbox must be a separate sibling tree, not
+inside the archive or spam tree.
+
+An email draft is Markdown with strict YAML frontmatter:
+
+```markdown
+---
+type: email
+account: work
+to:
+  - Jane Example <jane@example.com>
+cc: boss@example.net
+bcc: audit@example.net
+subject: Project update
+from_name: Your Name
+reply_to: replies@example.com
+---
+Hello Jane,
+
+The project is **ready**.
+```
+
+`to`, `cc`, and `bcc` each accept one address or a YAML list; at least one recipient
+and a non-empty subject are required. Email bodies are sent as UTF-8 plain text, so
+the Markdown source remains readable but is not converted to HTML. Attachments are not
+yet supported in the outbound format.
+
+A Google Chat draft names an existing space resource. `thread` is optional; include its
+full resource name to reply to an existing thread:
+
+```markdown
+---
+type: chat
+account: work
+space: spaces/AAAA123
+thread: spaces/AAAA123/threads/BBBB456
+---
+**Deployment complete.** Please check the dashboard.
+```
+
+Run `comms send --dry-run` first, then `comms send`. The command recursively processes
+regular `.md` files under `send/` in path order. Invalid or failed files remain there;
+each success moves the exact source file to `archived/YYYY/MM/DD/` (UTC), adding a short
+id suffix to prevent filename collisions. A persistent ledger plus provider-specific
+identities reconciles interrupted attempts: rerunning `comms send` resumes a Gmail or
+FastMail draft, finds an already-sent message, or reuses Google Chat's idempotent request
+ID instead of blindly delivering it twice. Keep a draft's filename stable while it is in
+flight; use a different filename or content when intentionally sending a similar message
+again.
+
+### Sending credentials
+
+- Gmail sending adds `gmail.compose`, because the crash-recovery protocol creates a
+  Gmail draft before sending it, and uses `gmail.readonly` to reconcile Sent mail.
+- Google Chat sending adds `chat.messages.create` and uses `chat.messages.readonly`
+  for conflict reconciliation.
+- After enabling either Google flag, run `comms auth google <label>` again and approve
+  the added permission.
+- FastMail sending requires a JMAP token with write/send access; replace a read-only
+  archive token by running `comms auth fastmail <label>` and pasting the new token.
+
 ## Google setup (once per account)
 
 The tool talks to the Gmail and Chat APIs with your own OAuth client:
@@ -109,7 +199,8 @@ The tool talks to the Gmail and Chat APIs with your own OAuth client:
 
 One `[[google]]` block is one Google identity, and its single consent covers both its
 Gmail and its Chat. The scope set follows the block: `gmail = true` adds
-`gmail.readonly`, `chat = true` adds the three Chat read scopes, and
+`gmail.readonly`, `chat = true` adds the three Chat read scopes, `send_email = true`
+adds `gmail.compose`, `send_chat = true` adds `chat.messages.create`, and
 `mirror_drive_files = true` adds `drive.readonly` — change any of them and `comms doctor`
 tells you to re-run `comms auth google <label>`.
 
@@ -135,7 +226,8 @@ you need a one-shot chat export.
 ## FastMail setup (once per account)
 
 1. FastMail web → **Settings → Privacy & Security → API tokens → New token**.
-2. Type **JMAP**, scope **read-only**. The token is shown exactly once.
+2. Type **JMAP**. Choose **read-only** for archiving alone; enable write/send access
+   when `send_email = true`. The token is shown exactly once.
 3. `comms auth fastmail <label>` and paste it (or set `COMMS_FASTMAIL_TOKEN_<LABEL>`).
 
 The token is stored at `~/.config/comms/fastmail-token-<label>` (0600). API tokens are not
@@ -150,6 +242,9 @@ available on FastMail **Basic** plans.
 archive_root = "~/Archive"
 # spam_root  = "~/spam"          # where noise triage files notes; default: beside archive_root
 timezone     = "local"
+
+[sending]
+# root = "~/Comms"              # default: archive_root + "-outbox"
 
 [daemon]
 gmail_interval    = "5m"
@@ -169,6 +264,8 @@ label   = "work"                        # permanent; appears in filenames
 account = "you@example.com"
 gmail   = true
 chat    = true
+send_email = false
+send_chat  = false
 include_drafts     = false
 mirror_drive_files = false
 show_deleted       = false
@@ -184,23 +281,27 @@ client_file = "~/.config/comms/google-client-personal.json"   # different Worksp
 [[fastmail]]
 label   = "fm"
 account = "you@fastmail.example"
+send_email = false
 ```
 
 | Key | Default | Meaning |
 |---|---|---|
 | `archive_root` | `~/Archive` | Root of the merged `YYYY/MM/DD` tree |
 | `spam_root` | a `spam` directory beside `archive_root` | Where [noise triage](#noise-triage) files notes, at the same `YYYY/MM/DD/<name>` path. Must sit **beside** the archive (never inside it, nor around it) and on the same volume — a move is an atomic rename |
+| `[sending] root` | `archive_root + "-outbox"` | Dedicated root containing `send/` and `archived/`; must not contain or sit inside either archive tree |
 | `timezone` | `"local"` | Resolved to an IANA zone on first sync, then pinned — the tree's day boundaries never shift even if the machine travels |
 | `[daemon] *_interval` | 5m / 2m / 5m | Poll intervals, global **per source kind** — every account of a kind polls on the same schedule (`gchat` short: history-off spaces retain messages only 24h) |
 | `[[google]] label` | — | Required, permanent, unique across **all** accounts of all kinds; must match `^[a-z0-9][a-z0-9-]{0,19}$` |
 | `[[google]] account` | — | The identity's email address; `comms doctor` verifies the token really belongs to it |
-| `[[google]] gmail` / `chat` | false | What this identity archives; at least one must be true |
+| `[[google]] gmail` / `chat` | false | What this identity archives |
+| `[[google]] send_email` / `send_chat` | false | Explicit outbound opt-ins; add OAuth scopes and require `comms auth google <label>` again |
 | `[[google]] include_drafts` | false | Drafts churn message ids; off by default |
 | `[[google]] mirror_drive_files` | false | Off: Drive-backed Chat attachments are linked, not downloaded (on adds the `drive.readonly` scope — re-run `comms auth google <label>`) |
 | `[[google]] show_deleted` | false | Keep "(message deleted)" tombstones in day files |
 | `[[google]] client_file` | `google-client.json` | This account's OAuth Desktop client JSON; needed when accounts are in different Workspace orgs |
 | `[[fastmail]] label` | — | Same rules as a Google label |
 | `[[fastmail]] account` | — | Informational, recorded in frontmatter — and one of the "own addresses" triage never files |
+| `[[fastmail]] send_email` | false | Enable JMAP submission; requires a token with write/send access |
 | `[triage] after_sync` | false | Run the rules-only triage layers after each successful mail sync, in `comms sync` and in the daemon |
 | `[triage] header_heuristics` | true | Let the bulk-mail headers captured at archive time decide (Precedence: bulk/junk, Auto-Submitted, X-Auto-Response-Suppress, Gmail Promotions/Social) |
 | `[triage] rules_file` | `~/.config/comms/triage.toml` | The `[[keep]]` / `[[noise]]` rules; `comms init` writes a starter |
@@ -210,8 +311,9 @@ account = "you@fastmail.example"
 | `[triage.llm] base_url` / `model` | `http://127.0.0.1:1234/v1` / — | An OpenAI-compatible chat endpoint (LM Studio, Ollama, …); `model` is required when enabled |
 | `[triage.llm] timeout` / `max_body_chars` | 20s / 4000 | Per request; body excerpt sent with the header fields |
 
-At least one account must be enabled. A `[[google]]` block with both `gmail = false` and
-`chat = false` is a configuration error, as is a duplicate label. The old single-account
+At least one archive or send capability must be enabled. A `[[google]]` block with all of
+`gmail`, `chat`, `send_email`, and `send_chat` false is a configuration error, as is a
+duplicate label. The old single-account
 `[gmail]` / `[gchat]` / `[fastmail]` tables are rejected with a message naming the new
 format.
 
@@ -225,7 +327,8 @@ Everything lives in the config dir (all `0600`, directory `0700`):
 | `google-token-<label>.json` | account | Always per label — two identities can never share one |
 | `fastmail-token-<label>` | account | Written by `comms auth fastmail <label>` |
 
-Env overrides: `COMMS_CONFIG_DIR`, `COMMS_ARCHIVE_ROOT`, `COMMS_SPAM_ROOT`, plus per-account
+Env overrides: `COMMS_CONFIG_DIR`, `COMMS_ARCHIVE_ROOT`, `COMMS_SPAM_ROOT`,
+`COMMS_OUTBOX_ROOT`, plus per-account
 `COMMS_GOOGLE_CLIENT_FILE_<LABEL>`, `COMMS_GOOGLE_TOKEN_FILE_<LABEL>`,
 `COMMS_FASTMAIL_TOKEN_<LABEL>` (label uppercased, `-` → `_`; e.g.
 `COMMS_FASTMAIL_TOKEN_FM`). The unsuffixed `COMMS_GOOGLE_CLIENT_FILE`,

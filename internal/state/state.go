@@ -2,8 +2,8 @@
 // remember between runs: archive metadata, sync cursors, the per-message
 // dedup index, the Gmail backfill work queue, out-of-band attachment
 // downloads, the canonical Google Chat message store with its day-file
-// projection ledger, and observability ledgers (sync runs, poison-item
-// failures).
+// projection ledger, observability ledgers (sync runs, poison-item failures),
+// and the crash-recoverable outgoing-message lifecycle.
 //
 // The store assumes a single writing process (enforced elsewhere by flock);
 // within the process it serializes on one connection. All timestamps are
@@ -32,7 +32,7 @@ import (
 // and an upgraded one end with byte-for-byte the same schema: each change to
 // the schema is written exactly once, as a step, never also folded back into
 // the base DDL.
-const schemaVersion = 2
+const schemaVersion = 3
 
 // Well-known meta keys.
 const (
@@ -314,6 +314,7 @@ func schemaSQL() string {
 // current user_version inside a single transaction.
 var migrations = map[int]func() string{
 	2: schemaV2SQL,
+	3: schemaV3SQL,
 }
 
 // schemaV2SQL is the noise-triage step: every email note gets a disposition
@@ -362,6 +363,32 @@ CREATE TABLE triage_decisions (
   PRIMARY KEY (source, stable_id)
 );
 CREATE INDEX idx_triage_by_rule ON triage_decisions(source, verdict, layer, rule);
+`
+}
+
+// schemaV3SQL adds the durable filesystem-outbox ledger. A row reaches sent
+// before its draft is renamed, so a crash can resume the local archive move
+// without making a second provider call. The provider-specific senders also
+// use message_key as their remote idempotency key.
+func schemaV3SQL() string {
+	return `
+CREATE TABLE outgoing_messages (
+  message_key      TEXT PRIMARY KEY,
+  source           TEXT NOT NULL,
+  kind             TEXT NOT NULL CHECK (kind IN ('email', 'chat')),
+  draft_rel_path   TEXT NOT NULL,
+  content_hash     TEXT NOT NULL,
+  status           TEXT NOT NULL CHECK (status IN ('pending', 'sending', 'sent', 'archived')),
+  attempts         INTEGER NOT NULL DEFAULT 0,
+  provider_id      TEXT,
+  archive_rel_path TEXT,
+  last_error       TEXT,
+  prepared_at      TEXT NOT NULL,
+  updated_at       TEXT NOT NULL,
+  sent_at          TEXT,
+  archived_at      TEXT
+);
+CREATE INDEX idx_outgoing_status ON outgoing_messages(status, prepared_at);
 `
 }
 

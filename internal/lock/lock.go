@@ -17,11 +17,21 @@ import (
 // Acquire takes an exclusive non-blocking flock on <stateDir>/lock and
 // returns an idempotent release function. flock associates the lock with
 // the open file description, so a second Acquire — from another process or
-// this one — fails immediately with a clear "another comms instance is
+// this one — fails immediately with a clear "another comms operation is
 // running" error instead of blocking. The lock also dies with the process,
 // so a crash can never leave it stuck.
 func Acquire(stateDir string) (func(), error) {
-	path := filepath.Join(stateDir, "lock")
+	return AcquireNamed(stateDir, "lock")
+}
+
+// AcquireNamed takes an independent lock within stateDir. It is used for
+// workflows such as explicit outbound sending that may safely coexist with
+// the archive daemon while still excluding a second copy of themselves.
+func AcquireNamed(stateDir, name string) (func(), error) {
+	if filepath.Base(name) != name || name == "." || name == "" {
+		return nil, fmt.Errorf("invalid lock name %q", name)
+	}
+	path := filepath.Join(stateDir, name)
 	f, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0o600)
 	if err != nil {
 		return nil, fmt.Errorf("open lock file: %w", err)
@@ -29,7 +39,7 @@ func Acquire(stateDir string) (func(), error) {
 	if err := unix.Flock(int(f.Fd()), unix.LOCK_EX|unix.LOCK_NB); err != nil {
 		f.Close()
 		if errors.Is(err, unix.EWOULDBLOCK) {
-			return nil, fmt.Errorf("another comms instance is running (lock %s is held) — stop it or wait for it to finish", path)
+			return nil, fmt.Errorf("another comms operation is running (lock %s is held) — wait for it to finish", path)
 		}
 		return nil, fmt.Errorf("flock %s: %w", path, err)
 	}

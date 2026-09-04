@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -24,6 +25,8 @@ import (
 	"comms/internal/paths"
 	"comms/internal/policy"
 	"comms/internal/ratelimit"
+	gchatsender "comms/internal/sender/gchat"
+	gmailsender "comms/internal/sender/gmail"
 	"comms/internal/source"
 	"comms/internal/source/fastmail"
 	"comms/internal/source/gchat"
@@ -262,26 +265,36 @@ func (a *app) heal(ctx context.Context) error {
 	return a.healChatDays(ctx)
 }
 
-// googleScopes derives the OAuth scope set ONE [[google]] account needs:
-// gmail.readonly when it archives mail, the three Chat read scopes when it
-// archives Chat, and drive.readonly on top when that Chat archive mirrors
-// Drive-backed attachments. A single consent covers both of the account's
-// instances, so this is also the scope set of its one token file.
+// googleScopes derives the OAuth scope set ONE [[google]] account needs.
+// Outbound capabilities add their write scope plus the narrow read scope used
+// to reconcile an interrupted delivery. A single consent covers both archive
+// and send capabilities, so this is the scope set of its one token file.
 func googleScopes(acct config.GoogleAccount) []string {
 	var scopes []string
-	if acct.Gmail {
-		scopes = append(scopes, gmail.Scope)
+	add := func(scope string) {
+		if !slices.Contains(scopes, scope) {
+			scopes = append(scopes, scope)
+		}
+	}
+	if acct.Gmail || acct.SendEmail {
+		add(gmail.Scope)
+	}
+	if acct.SendEmail {
+		add(gmailsender.Scope)
 	}
 	if acct.Chat {
-		scopes = append(scopes,
-			chat.ChatSpacesReadonlyScope,
-			chat.ChatMessagesReadonlyScope,
-			chat.ChatMembershipsReadonlyScope)
+		add(chat.ChatSpacesReadonlyScope)
+		add(chat.ChatMessagesReadonlyScope)
+		add(chat.ChatMembershipsReadonlyScope)
 		// Drive mirroring is a Chat-only feature: the connector fetches
 		// DRIVE_FILE attachments it finds in messages.
 		if acct.MirrorDriveFiles {
-			scopes = append(scopes, driveReadonlyScope)
+			add(driveReadonlyScope)
 		}
+	}
+	if acct.SendChat {
+		add(chat.ChatMessagesReadonlyScope)
+		add(gchatsender.Scope)
 	}
 	return scopes
 }

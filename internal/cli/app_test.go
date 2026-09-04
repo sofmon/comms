@@ -8,11 +8,13 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
 
 	"golang.org/x/oauth2"
+	chat "google.golang.org/api/chat/v1"
 
 	"comms/internal/archive"
 	"comms/internal/config"
@@ -81,6 +83,7 @@ func setTestEnv(t *testing.T, cfgDir, stateHome string) {
 	t.Setenv("COMMS_CONFIG_DIR", cfgDir)
 	t.Setenv("XDG_STATE_HOME", stateHome)
 	t.Setenv("COMMS_ARCHIVE_ROOT", "")
+	t.Setenv("COMMS_OUTBOX_ROOT", "")
 	t.Setenv("COMMS_GOOGLE_CLIENT_FILE", "")
 	t.Setenv("COMMS_GOOGLE_TOKEN_FILE", "")
 	t.Setenv("COMMS_FASTMAIL_TOKEN", "")
@@ -130,6 +133,21 @@ func writeGoogleCreds(t *testing.T, clientFile, tokenFile string, scopes []strin
 		t.Fatal(err)
 	}
 	writeFile(t, tokenFile, string(b))
+}
+
+func TestGoogleScopesIncludeOutboundAndDeduplicateReads(t *testing.T) {
+	got := googleScopes(config.GoogleAccount{Gmail: true, Chat: true, SendEmail: true, SendChat: true})
+	want := []string{
+		"https://www.googleapis.com/auth/gmail.readonly",
+		"https://www.googleapis.com/auth/gmail.compose",
+		chat.ChatSpacesReadonlyScope,
+		chat.ChatMessagesReadonlyScope,
+		chat.ChatMembershipsReadonlyScope,
+		chat.ChatMessagesCreateScope,
+	}
+	if !slices.Equal(got, want) {
+		t.Fatalf("googleScopes = %v, want %v", got, want)
+	}
 }
 
 func TestOpenAppPinsLocalTimezone(t *testing.T) {
