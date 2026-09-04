@@ -8,7 +8,7 @@ import (
 
 	_ "modernc.org/sqlite" // registers driver "sqlite"
 
-	"save/internal/state"
+	"comms/internal/state"
 )
 
 // openRO opens the state database read-only. The state package deliberately
@@ -18,7 +18,7 @@ import (
 // and WAL lets them run beside an active daemon.
 func openRO(dbPath string) (*sql.DB, error) {
 	if _, err := os.Stat(dbPath); err != nil {
-		return nil, fmt.Errorf("no state database at %s — run `save sync` first (%w)", dbPath, err)
+		return nil, fmt.Errorf("no state database at %s — run `comms sync` first (%w)", dbPath, err)
 	}
 	db, err := sql.Open("sqlite", "file:"+dbPath+"?mode=ro&_pragma=busy_timeout(5000)")
 	if err != nil {
@@ -132,13 +132,13 @@ func listSourcesRO(db *sql.DB) ([]string, error) {
 type skippedBytes struct {
 	// NotStored is the decoded size of every refused attachment whose bytes
 	// are still not on disk. A row resolved "fetched" is excluded because
-	// `save refetch` since put those bytes in the archive; rows resolved
+	// `comms refetch` since put those bytes in the archive; rows resolved
 	// "source_gone" and "still_denied" are INCLUDED, because they are exactly
 	// the ones that are gone for good or refused for good.
 	NotStored int64 `json:"not_stored"`
 
 	// Unresolved is the subset whose skip is still an open question — the
-	// bytes `save refetch` could still recover if the policy were widened.
+	// bytes `comms refetch` could still recover if the policy were widened.
 	Unresolved int64 `json:"unresolved"`
 }
 

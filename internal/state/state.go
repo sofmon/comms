@@ -24,7 +24,7 @@ import (
 
 	_ "modernc.org/sqlite" // registers driver "sqlite"
 
-	"save/internal/policy"
+	"comms/internal/policy"
 )
 
 // schemaVersion gates migrations via PRAGMA user_version. A fresh database
@@ -47,7 +47,7 @@ const (
 	// MetaAttachmentPolicyDigest is the policy.Policy.PolicyDigest that was in
 	// force the last time this archive was synced. When the digest computed
 	// from the current config differs, previously skipped attachments may now
-	// be storable: `save status` reports the count and `save refetch` — never
+	// be storable: `comms status` reports the count and `comms refetch` — never
 	// an automatic sync — actually fetches them. Read and write it through
 	// AttachmentPolicyDigest / SetAttachmentPolicyDigest.
 	MetaAttachmentPolicyDigest = "attachment_policy_digest"
@@ -256,7 +256,7 @@ CREATE TABLE failures (
 
 -- skipped_attachments is the never-drop-silently ledger: one row for every
 -- attachment the storage policy REFUSED, carrying both the human record that
--- the .md note restates and the identity "save refetch" needs to fetch the
+-- the .md note restates and the identity "comms refetch" needs to fetch the
 -- bytes later. It is keyed exactly like attachments — (source, stable_id,
 -- part_key) — so a skip and a completed download of the same part line up,
 -- and so two accounts that see the same logical attachment keep separate rows.
@@ -342,8 +342,8 @@ CREATE INDEX idx_messages_rel_path ON messages(rel_path);
 -- triage_decisions is the noise-triage ledger: the LATEST decision for every
 -- message a triage pass has considered, whatever the verdict. A message the
 -- rules left alone is recorded as signal or undecided here just like a noisy
--- one, so "save status" can say how many notes each layer and rule decided
--- and "save triage --explain" can say why one note is where it is.
+-- one, so "comms status" can say how many notes each layer and rule decided
+-- and "comms triage --explain" can say why one note is where it is.
 --
 -- It is deliberately separate from messages.disposition: the disposition is
 -- where the note IS, this is what was DECIDED. They agree after a completed

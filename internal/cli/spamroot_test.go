@@ -9,9 +9,9 @@ import (
 	"testing"
 	"time"
 
-	"save/internal/config"
-	"save/internal/policy"
-	"save/internal/state"
+	"comms/internal/config"
+	"comms/internal/policy"
+	"comms/internal/state"
 )
 
 // TestRefetchPassesTheNoteDisposition: the connector re-renders whichever

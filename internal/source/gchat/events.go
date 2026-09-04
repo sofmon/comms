@@ -10,9 +10,9 @@ import (
 
 	chat "google.golang.org/api/chat/v1"
 
-	"save/internal/naming"
-	"save/internal/retry"
-	"save/internal/state"
+	"comms/internal/naming"
+	"comms/internal/retry"
+	"comms/internal/state"
 )
 
 // cursorEventsTime is the per-space cursor kind for the spaceEvents pass.

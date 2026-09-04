@@ -6,7 +6,7 @@ state.db
 *.db-wal
 *.db-shm
 
-# Credentials. `save` keeps these beside the config (0600), but they can land in
+# Credentials. `comms` keeps these beside the config (0600), but they can land in
 # the working tree while you set things up. All are secrets.
 *token*
 google-client*.json
@@ -16,12 +16,12 @@ fastmail-token*
 # token.go); secrets have no .go extension.
 !*token*.go
 
-# Built binaries. `go build -o save ./cmd/save` drops one at the repo root; a
-# bare `go build` inside cmd/save drops one there. NOTE: these are anchored on
-# purpose — a bare `save` pattern would also exclude the cmd/save/ source
+# Built binaries. `go build -o comms ./cmd/comms` drops one at the repo root; a
+# bare `go build` inside cmd/comms drops one there. NOTE: these are anchored on
+# purpose — a bare `comms` pattern would also exclude the cmd/comms/ source
 # directory and silently drop the package from the repo.
-/save
-cmd/save/save
+/comms
+cmd/comms/comms
 
 # macOS noise.
 .DS_Store

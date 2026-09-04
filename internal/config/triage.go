@@ -8,16 +8,16 @@ import (
 	"strings"
 	"time"
 
-	"save/internal/paths"
+	"comms/internal/paths"
 )
 
-// Triage is the [triage] block: how `save triage` decides what is noise.
+// Triage is the [triage] block: how `comms triage` decides what is noise.
 // The decision engine lives in internal/triage; this block configures the
 // protect layer (things that can never be noise), the header layer's
 // switch, where the rules file is, and the optional model layer.
 type Triage struct {
 	// AfterSync runs the rules-only layers (0–2) after every successful sync
-	// pass of a mail account, in `save sync` and in the daemon. Off by
+	// pass of a mail account, in `comms sync` and in the daemon. Off by
 	// default: triage is a separate, explicit pass until the operator has
 	// seen a dry run they like.
 	AfterSync bool `toml:"after_sync"`
@@ -47,7 +47,7 @@ type Triage struct {
 // TriageLLM is [triage.llm]: the optional model layer, consulted only for
 // notes layers 0–2 left undecided, over an OpenAI-compatible chat endpoint.
 type TriageLLM struct {
-	// Enabled turns the layer on for `save triage`. Default false.
+	// Enabled turns the layer on for `comms triage`. Default false.
 	Enabled bool `toml:"enabled"`
 
 	// InDaemon also lets the after_sync pass consult the model. Default

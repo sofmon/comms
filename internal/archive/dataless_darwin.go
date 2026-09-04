@@ -19,7 +19,7 @@ import (
 // EDEADLK/ETIMEDOUT when the calling process has its materialization policy
 // off, which is the default for anything running outside the user's login
 // session (see setiopolicy_np(3), MaterializeDatalessFiles in
-// launchd.plist(5)). A `save` run started by launchd is exactly that case.
+// launchd.plist(5)). A `comms` run started by launchd is exactly that case.
 //
 // The archiver never wants to touch such a file: renaming over a dataless
 // destination throws away the only local trace of a file whose bytes live in

@@ -32,7 +32,7 @@ import (
 
 // ErrNeedsAuth is returned (wrapped) when no usable cached token exists;
 // the CLI reacts by running the interactive Authenticate flow.
-var ErrNeedsAuth = errors.New("google authorization required (run `save auth google`)")
+var ErrNeedsAuth = errors.New("google authorization required (run `comms auth google`)")
 
 // Test seams. openBrowser launches the system browser (macOS `open`);
 // authOut receives the human-readable auth URL prompt; testEndpoint, when
@@ -214,7 +214,7 @@ func Authenticate(ctx context.Context, clientFile, tokenFile string, scopes []st
 					return
 				}
 				w.Header().Set("Content-Type", "text/html; charset=utf-8")
-				fmt.Fprint(w, "<html><body><p>Authorization complete — you can close this window and return to <code>save</code>.</p></body></html>")
+				fmt.Fprint(w, "<html><body><p>Authorization complete — you can close this window and return to <code>comms</code>.</p></body></html>")
 				deliver(result{code: q.Get("code")})
 			default:
 				// favicon.ico and other stray browser requests
@@ -231,7 +231,7 @@ func Authenticate(ctx context.Context, clientFile, tokenFile string, scopes []st
 	}()
 
 	authURL := cfg.AuthCodeURL(state, oauth2.AccessTypeOffline, oauth2.S256ChallengeOption(verifier))
-	fmt.Fprintf(authOut, "Open this URL in your browser to authorize save:\n\n  %s\n\n", authURL)
+	fmt.Fprintf(authOut, "Open this URL in your browser to authorize comms:\n\n  %s\n\n", authURL)
 	if err := openBrowser(authURL); err != nil {
 		fmt.Fprintf(authOut, "(could not open browser automatically: %v)\n", err)
 	}

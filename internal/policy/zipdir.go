@@ -1,6 +1,6 @@
 package policy
 
-// The ONE carve-out to save's never-decompress invariant.
+// The ONE carve-out to comms's never-decompress invariant.
 //
 // No non-test file in this tree imports archive/zip, compress/gzip,
 // compress/flate or archive/tar, and this file does not change that: it reads
@@ -61,7 +61,7 @@ var vbaProjectNames = map[string]bool{
 // VBA macro project. It never inflates anything. A zip it cannot parse
 // reports false — see the file comment for why that is the right default.
 //
-// Exported so `save doctor` and tests can exercise the check directly; Decide
+// Exported so `comms doctor` and tests can exercise the check directly; Decide
 // applies it only to content that sniffed as one of the three OOXML types.
 func HasVBAProject(b []byte) bool {
 	found := false

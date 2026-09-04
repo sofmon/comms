@@ -8,7 +8,7 @@ import (
 	gmailv1 "google.golang.org/api/gmail/v1"
 	"google.golang.org/api/googleapi"
 
-	"save/internal/retry"
+	"comms/internal/retry"
 )
 
 // Gmail system label ids that drive scope decisions.

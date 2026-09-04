@@ -12,9 +12,9 @@ import (
 	"testing"
 	"time"
 
-	"save/internal/archive"
-	"save/internal/paths"
-	"save/internal/state"
+	"comms/internal/archive"
+	"comms/internal/paths"
+	"comms/internal/state"
 )
 
 // TestVerifyChatDayHashMismatch pins two things: a genuine mismatch on a

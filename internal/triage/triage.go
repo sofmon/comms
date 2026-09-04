@@ -9,7 +9,7 @@ import (
 	"strconv"
 	"strings"
 
-	"save/internal/state"
+	"comms/internal/state"
 )
 
 // Judge is the optional model layer. Judge returns the model's verdict on a
@@ -18,7 +18,7 @@ import (
 // The classifier treats every error as undecided and never as noise.
 type Judge interface {
 	// Rule is the rule id recorded with the decision, e.g. "qwen2.5@v1":
-	// model plus prompt version, so `save triage --reclassify --only llm`
+	// model plus prompt version, so `comms triage --reclassify --only llm`
 	// can find exactly the decisions this judge made.
 	Rule() string
 	Judge(ctx context.Context, n *Note) (noise bool, reason string, err error)
@@ -155,7 +155,7 @@ type Decision struct {
 	// not be settled under the digest, so the next pass tries again.
 	Transient bool
 
-	// Trace is one line per layer consulted, for `save triage --explain`.
+	// Trace is one line per layer consulted, for `comms triage --explain`.
 	Trace []string
 }
 

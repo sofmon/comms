@@ -16,9 +16,9 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"save/internal/archive"
-	"save/internal/config"
-	"save/internal/state"
+	"comms/internal/archive"
+	"comms/internal/config"
+	"comms/internal/state"
 )
 
 const verifyLong = `Audit the state database against the archive and spam trees (read-only).
@@ -219,7 +219,7 @@ func runVerifyWith(out io.Writer, o verifyOpts) error {
 			case skipped:
 				// Evicted to the cloud; counted, not checked.
 			case errors.Is(err, fs.ErrNotExist) && inOther:
-				report("note recorded in the %s tree is in the %s tree: %s (%s/%s) — an interrupted triage move; `save triage` reconciles it", disp, other, rel, source, id)
+				report("note recorded in the %s tree is in the %s tree: %s (%s/%s) — an interrupted triage move; `comms triage` reconciles it", disp, other, rel, source, id)
 				return nil
 			case errors.Is(err, fs.ErrNotExist):
 				report("missing file: %s (%s/%s) — in neither tree", rel, source, id)

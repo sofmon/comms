@@ -11,8 +11,8 @@ import (
 
 	gmailv1 "google.golang.org/api/gmail/v1"
 
-	"save/internal/policy"
-	"save/internal/state"
+	"comms/internal/policy"
+	"comms/internal/state"
 )
 
 // Attachment-policy behaviour of the Gmail connector.

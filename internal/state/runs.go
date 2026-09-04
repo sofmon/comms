@@ -14,7 +14,7 @@ type RunStats struct {
 	AttsFailed int64
 }
 
-// SyncRun is one recorded run for `save status`.
+// SyncRun is one recorded run for `comms status`.
 type SyncRun struct {
 	ID         int64
 	Source     string // instance id, e.g. "gmail:work"

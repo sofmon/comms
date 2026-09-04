@@ -6,9 +6,9 @@ import (
 	"testing"
 	"time"
 
-	"save/internal/config"
-	"save/internal/policy"
-	"save/internal/state"
+	"comms/internal/config"
+	"comms/internal/policy"
+	"comms/internal/state"
 )
 
 // statusFixture seeds a ledger, records digest as the meta digest, and
@@ -37,7 +37,7 @@ func statusFixture(t *testing.T, digest string, seed func(*state.DB)) string {
 // TestStatusDetectsPolicyChange is the startup half of the retro-fetch
 // protocol: when the digest the config now produces differs from the one the
 // archive was reconsidered under, status must say so, say how much of the
-// backlog the new policy would take, and point at `save refetch` — WITHOUT
+// backlog the new policy would take, and point at `comms refetch` — WITHOUT
 // fetching anything.
 func TestStatusDetectsPolicyChange(t *testing.T) {
 	dbPath := statusFixture(t, policy.Default().PolicyDigest(), func(db *state.DB) {
@@ -78,7 +78,7 @@ func TestStatusDetectsPolicyChange(t *testing.T) {
 		policy.Default().PolicyDigest(),
 		"6 (200.0 MB) would be accepted",
 		"nothing is ever re-fetched automatically",
-		"save refetch --dry-run",
+		"comms refetch --dry-run",
 	} {
 		if !strings.Contains(text, want) {
 			t.Errorf("status output is missing %q:\n%s", want, text)

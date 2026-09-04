@@ -252,7 +252,7 @@ func firstLine(b []byte) string {
 }
 
 // PingLLM checks that an OpenAI-compatible endpoint answers at all, for
-// `save doctor`: GET <baseURL>/models. It says whether the named model is
+// `comms doctor`: GET <baseURL>/models. It says whether the named model is
 // listed when the server lists models, and nothing more — a reachable
 // endpoint is all a doctor check can promise.
 func PingLLM(ctx context.Context, baseURL, model string, client *http.Client) (listed bool, err error) {

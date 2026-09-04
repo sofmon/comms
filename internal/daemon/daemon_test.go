@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"save/internal/daemon"
-	"save/internal/retry"
+	"comms/internal/daemon"
+	"comms/internal/retry"
 )
 
 func quiet() *slog.Logger {

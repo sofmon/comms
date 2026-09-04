@@ -10,15 +10,15 @@ import (
 	"strings"
 	"syscall"
 
-	"save/internal/naming"
-	"save/internal/state"
+	"comms/internal/naming"
+	"comms/internal/state"
 )
 
 // Sentinel errors for MoveNote. Callers classify with errors.Is.
 var (
 	// ErrNoteInBothTrees means the note exists under both roots. Nothing is
 	// touched: the mover cannot know which copy is the real one, and
-	// `save verify` reports it for a person to resolve.
+	// `comms verify` reports it for a person to resolve.
 	ErrNoteInBothTrees = errors.New("note exists in both the archive and the spam tree")
 
 	// ErrCrossDevice means the two roots are on different filesystems, so a

@@ -6,14 +6,14 @@ import (
 	"slices"
 	"time"
 
-	"save/internal/policy"
+	"comms/internal/policy"
 )
 
 // Resolutions for a skipped_attachments row. A resolution is terminal: it
 // says how the skip stopped being an open question, not that the bytes are
 // necessarily in the archive.
 const (
-	// SkipResolutionFetched: `save refetch` fetched the bytes, they passed
+	// SkipResolutionFetched: `comms refetch` fetched the bytes, they passed
 	// the current policy, and the file is on disk. The owning note must be
 	// re-rendered so it shows a link instead of the skip entry.
 	SkipResolutionFetched = "fetched"
@@ -49,7 +49,7 @@ var policyDigestChars = len(policy.Default().PolicyDigest())
 const sha256HexChars = 64
 
 // SkippedAttachment is one refusal by the attachment storage policy: an
-// attachment save decided not to store, recorded with enough identity to
+// attachment comms decided not to store, recorded with enough identity to
 // fetch it later and enough detail for the .md note to explain itself.
 //
 // Nothing is ever dropped silently: every Verdict with Store == false becomes
@@ -63,7 +63,7 @@ type SkippedAttachment struct {
 	PartKey  string // dotted MIME index ("2.1.3") or attachment resource name
 
 	// What arrived. OrigName is the sender's filename and SanitizedName the
-	// name save would have written (naming.SanitizeFilename output, the same
+	// name comms would have written (naming.SanitizeFilename output, the same
 	// string the policy keyed its decision on). Either may be empty: inline
 	// parts often carry no filename at all.
 	OrigName      string
@@ -81,7 +81,7 @@ type SkippedAttachment struct {
 	SniffedType  string
 
 	// Reason is a policy.Reason* constant: the machine-readable answer to
-	// "why not?", and what `save refetch` re-decides against.
+	// "why not?", and what `comms refetch` re-decides against.
 	Reason string
 
 	// PolicyDigest is the policy.Policy.PolicyDigest in force when the
@@ -212,7 +212,7 @@ func skippedArgs(s SkippedAttachment) ([]any, error) {
 		return nil, err
 	}
 	if s.StableID == "" || s.PartKey == "" {
-		return fail("stable id and part key are required — they are how `save refetch` finds the bytes again")
+		return fail("stable id and part key are required — they are how `comms refetch` finds the bytes again")
 	}
 	if s.NoteRelPath == "" || s.DayBucket == "" {
 		return fail("note rel path and day bucket are required — a skip that is not tied to a note is a silent drop")
@@ -244,7 +244,7 @@ func skippedArgs(s SkippedAttachment) ([]any, error) {
 
 // ListUnresolvedSkipped returns skips that still stand, across EVERY
 // configured instance, ordered by instance then by when they were first
-// refused — the order `save refetch` walks them in, and grouped so one
+// refused — the order `comms refetch` walks them in, and grouped so one
 // account's backlog is contiguous. limit <= 0 means no limit.
 func (d *DB) ListUnresolvedSkipped(limit int) ([]SkippedAttachment, error) {
 	if limit <= 0 {
@@ -316,7 +316,7 @@ func (d *DB) SkippedForNote(noteRelPath string) ([]SkippedAttachment, error) {
 	return scanSkipped(rows)
 }
 
-// SkipCounts is one instance's skipped-attachment tally for `save status`.
+// SkipCounts is one instance's skipped-attachment tally for `comms status`.
 // The ByReason maps are keyed by policy.Reason* constants and omit reasons
 // with no rows.
 type SkipCounts struct {

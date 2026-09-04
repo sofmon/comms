@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"save/internal/naming"
-	"save/internal/policy"
+	"comms/internal/naming"
+	"comms/internal/policy"
 )
 
 var update = flag.Bool("update", false, "rewrite golden files")

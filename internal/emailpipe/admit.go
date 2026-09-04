@@ -3,8 +3,8 @@ package emailpipe
 import (
 	"fmt"
 
-	"save/internal/naming"
-	"save/internal/policy"
+	"comms/internal/naming"
+	"comms/internal/policy"
 )
 
 // Options tunes Render. The zero value is the production default: the

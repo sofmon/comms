@@ -30,8 +30,8 @@ func TestDoctorReportsEachAccountSeparately(t *testing.T) {
 		filepath.Join(cfgDir, "google-client.json"), // work uses the shared default
 		personalClient, // personal has its own
 		filepath.Join(cfgDir, "fastmail-token-fm"),
-		"save auth google personal",
-		"save auth fastmail fm",
+		"comms auth google personal",
+		"comms auth fastmail fm",
 		// The multi-org caveat the second Workspace account depends on.
 		"ITS OWN Workspace",
 		"client_file",

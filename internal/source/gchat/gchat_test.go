@@ -19,11 +19,11 @@ import (
 	chat "google.golang.org/api/chat/v1"
 	"google.golang.org/api/googleapi"
 
-	"save/internal/archive"
-	"save/internal/config"
-	"save/internal/naming"
-	"save/internal/ratelimit"
-	"save/internal/state"
+	"comms/internal/archive"
+	"comms/internal/config"
+	"comms/internal/naming"
+	"comms/internal/ratelimit"
+	"comms/internal/state"
 )
 
 // fakeAPI implements chatAPI in memory. listMessages applies the createTime

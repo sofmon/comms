@@ -14,10 +14,10 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"save/internal/archive"
-	"save/internal/config"
-	"save/internal/state"
-	"save/internal/triage"
+	"comms/internal/archive"
+	"comms/internal/config"
+	"comms/internal/state"
+	"comms/internal/triage"
 )
 
 const triageLong = `Classify archived email notes as signal or noise and move the noise into
@@ -26,7 +26,7 @@ spam_root, at the same YYYY/MM/DD path each note had in the archive.
 Sync is untouched: every message is archived first, exactly as before, and
 triage is a separate pass over notes already on disk. Nothing is ever deleted
 — a note filed as noise keeps its attachment folder and comes back with
-` + "`save untriage`" + `.
+` + "`comms untriage`" + `.
 
 Decisions run in layers and stop at the first decisive one: the protect list
 (a stored PDF/Office attachment, your own outgoing mail, the protect_* globs
@@ -114,9 +114,9 @@ func runTriage(out io.Writer, o triageOpts) error {
 	return finishTriage(out, tally)
 }
 
-// manualRule is the disposition_rule `save untriage` records. A note the
+// manualRule is the disposition_rule `comms untriage` records. A note the
 // operator moved back by hand is theirs: no later pass re-files it, whatever
-// the rules say, until they run `save triage` on it again with --reclassify
+// the rules say, until they run `comms triage` on it again with --reclassify
 // --only manual.
 const manualRule = "manual"
 
@@ -254,7 +254,7 @@ type triagePlan struct {
 	Scoped     bool
 
 	Items []triageItem
-	// Manual counts notes in scope that `save untriage` placed and which
+	// Manual counts notes in scope that `comms untriage` placed and which
 	// the pass therefore leaves alone (unless --only manual).
 	Manual int
 	// Unconfigured are instance ids the ledger holds rows for that the
@@ -574,13 +574,13 @@ func finishTriage(out io.Writer, t triageTally) error {
 		fmt.Fprintf(out, "model unavailable for %d note(s): left where they are, looked at again next run\n", t.Transient)
 	}
 	if t.NotRead > 0 {
-		fmt.Fprintf(out, "not read: %d note(s) (evicted, missing or unreadable) — see `save verify`\n", t.NotRead)
+		fmt.Fprintf(out, "not read: %d note(s) (evicted, missing or unreadable) — see `comms verify`\n", t.NotRead)
 	}
 	if t.Interrupted {
-		fmt.Fprintf(out, "interrupted — re-run `save triage` to continue; every note not yet recorded is looked at again\n")
+		fmt.Fprintf(out, "interrupted — re-run `comms triage` to continue; every note not yet recorded is looked at again\n")
 	}
 	if t.Failed > 0 {
-		fmt.Fprintf(out, "failed: %d note(s) — left unsettled, re-run `save triage` (details in the log above)\n", t.Failed)
+		fmt.Fprintf(out, "failed: %d note(s) — left unsettled, re-run `comms triage` (details in the log above)\n", t.Failed)
 		return fmt.Errorf("%d note(s) could not be triaged", t.Failed)
 	}
 	return nil
@@ -588,7 +588,7 @@ func finishTriage(out io.Writer, t triageTally) error {
 
 // readNote reads a note for classification. An evicted iCloud placeholder
 // is skipped rather than read: reading would download it, which is exactly
-// what `save verify` refuses to do by accident, and a triage pass runs in
+// what `comms verify` refuses to do by accident, and a triage pass runs in
 // the daemon where that download is silent.
 func (r *triageRun) readNote(abs string) (*triage.Note, string) {
 	switch dl, err := r.isDataless(abs); {
@@ -618,7 +618,7 @@ func (r *triageRun) readNote(abs string) (*triage.Note, string) {
 	return n, ""
 }
 
-// dryRunTriage prints the plan and stops. Like `save refetch --dry-run` it
+// dryRunTriage prints the plan and stops. Like `comms refetch --dry-run` it
 // takes no instance lock, so it can answer beside a running daemon.
 func dryRunTriage(out io.Writer, o triageOpts) error {
 	cfg, err := config.Load(config.DefaultPath())
@@ -678,14 +678,14 @@ func printTriagePlan(out io.Writer, plan *triagePlan, files bool) {
 	}
 	rulesWhere := plan.RulesPath
 	if plan.Keep+plan.Noise == 0 {
-		rulesWhere += " (no rules — `save init` writes a starter file)"
+		rulesWhere += " (no rules — `comms init` writes a starter file)"
 	}
 	fmt.Fprintf(out, "  rules: %s — %d keep, %d noise; header heuristics %s; model %s\n", rulesWhere, plan.Keep, plan.Noise, heur, model)
 
 	toSpam, toArchive, protected, kept, byModel, undecided, transient, evicted, missing, unreadable, reconcile, perSource := plan.tally()
 	fmt.Fprintf(out, "\n%d note(s) in scope\n", len(plan.Items))
 	if plan.Manual > 0 {
-		fmt.Fprintf(out, "  %d note(s) placed by `save untriage` are left alone (re-evaluate them with --reclassify --only manual)\n", plan.Manual)
+		fmt.Fprintf(out, "  %d note(s) placed by `comms untriage` are left alone (re-evaluate them with --reclassify --only manual)\n", plan.Manual)
 	}
 	if reconcile > 0 {
 		fmt.Fprintf(out, "  %d note(s) found in the other tree than the database records (an interrupted move) — the row is corrected first, then the verdict applied\n", reconcile)
@@ -706,7 +706,7 @@ func printTriagePlan(out io.Writer, plan *triagePlan, files bool) {
 		fmt.Fprintf(out, "  model unavailable for %d note(s): left where they are and not settled — they are looked at again next run\n", transient)
 	}
 	if evicted+missing+unreadable > 0 {
-		fmt.Fprintf(out, "  not read: %d evicted to iCloud (reading would download them), %d missing, %d unreadable — see `save verify`\n", evicted, missing, unreadable)
+		fmt.Fprintf(out, "  not read: %d evicted to iCloud (reading would download them), %d missing, %d unreadable — see `comms verify`\n", evicted, missing, unreadable)
 	}
 	if files {
 		printed := false
@@ -728,7 +728,7 @@ func printTriagePlan(out io.Writer, plan *triagePlan, files bool) {
 		for _, it := range plan.Items {
 			switch {
 			case it.Problem == "missing":
-				fmt.Fprintf(out, "  missing: %s (%s/%s) — the state database names a note that is in neither tree; run `save verify`\n",
+				fmt.Fprintf(out, "  missing: %s (%s/%s) — the state database names a note that is in neither tree; run `comms verify`\n",
 					it.Msg.RelPath, it.Msg.Source, it.Msg.StableID)
 			case it.FoundIn != "":
 				fmt.Fprintf(out, "  would reconcile: %s is in the %s tree but recorded in the %s tree\n",
@@ -803,7 +803,7 @@ func explainNote(out io.Writer, notePath string) error {
 				}
 				fmt.Fprintln(out)
 				if m.Disposition != disp {
-					fmt.Fprintf(out, "  WARNING: the state database says %s but the file is in the %s tree — run `save verify`\n", m.Disposition, disp)
+					fmt.Fprintf(out, "  WARNING: the state database says %s but the file is in the %s tree — run `comms verify`\n", m.Disposition, disp)
 				}
 			}
 			if len(rows) == 0 {

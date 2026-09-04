@@ -8,14 +8,14 @@ import (
 	"testing"
 	"time"
 
-	"save/internal/emailpipe"
-	"save/internal/naming"
-	"save/internal/policy"
+	"comms/internal/emailpipe"
+	"comms/internal/naming"
+	"comms/internal/policy"
 )
 
 // refetchFixture is the same message before and after a policy widening: the
 // attachment that was refused as over-cap is now stored, exactly what
-// `save refetch` produces when it re-renders with the new policy.
+// `comms refetch` produces when it re-renders with the new policy.
 func refetchFixture(t *testing.T) (before, after *emailpipe.EmailDoc, meta EmailMeta, stem string) {
 	t.Helper()
 	server := time.Date(2026, 8, 7, 12, 32, 5, 0, time.UTC)

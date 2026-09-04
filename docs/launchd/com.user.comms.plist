@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
-  launchd USER AGENT for the `save` daemon (macOS autostart).
+  launchd USER AGENT for the `comms` daemon (macOS autostart).
 
   This is a LaunchAgent (~/Library/LaunchAgents, loaded into the gui/<uid>
   domain), NOT a LaunchDaemon (/Library/LaunchDaemons, the system domain).
@@ -18,7 +18,7 @@
        The system default is OFF, and a job in the system domain inherits
        that: a LaunchDaemon reading an evicted file gets EDEADLK instead of
        the file's contents. A GUI-session agent inherits the session's
-       policy, which is ON, so reads work. Run save as an agent.
+       policy, which is ON, so reads work. Run comms as an agent.
 
        If you must run it in a context where materialization is off, launchd
        has an escape hatch — add to this dict:
@@ -27,41 +27,41 @@
            <true/>
 
        …and be aware that it turns every stray read into a network download.
-       `save verify` deliberately goes the other way: it pins its own policy
+       `comms verify` deliberately goes the other way: it pins its own policy
        OFF and skips evicted files, unless you ask for them with its
        "materialize" flag.
 
   NOTE ON XML COMMENTS: a double hyphen is illegal inside one, which is why
   command-line flags are named without their leading dashes above.
 
-  KeepAlive restarts the daemon if it ever exits (crash, `save` upgrade,
-  transient failure); combined with save's own crash-safe write ordering
+  KeepAlive restarts the daemon if it ever exits (crash, `comms` upgrade,
+  transient failure); combined with comms's own crash-safe write ordering
   and startup healing this is safe at any kill point. The daemon holds a
-  single-instance flock, so a concurrent manual `save sync` is refused
+  single-instance flock, so a concurrent manual `comms sync` is refused
   rather than corrupting anything.
 
   Install:
-    1. Edit the ProgramArguments path below to where your `save` binary
-       lives (e.g. /opt/homebrew/bin/save or $HOME/go/bin/save — launchd
+    1. Edit the ProgramArguments path below to where your `comms` binary
+       lives (e.g. /opt/homebrew/bin/comms or $HOME/go/bin/comms — launchd
        does not expand ~ or $PATH).
-    2. cp docs/launchd/com.user.save.plist ~/Library/LaunchAgents/
-    3. launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.user.save.plist
+    2. cp docs/launchd/com.user.comms.plist ~/Library/LaunchAgents/
+    3. launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.user.comms.plist
 
   Stop / uninstall:
-    launchctl bootout gui/$(id -u)/com.user.save
+    launchctl bootout gui/$(id -u)/com.user.comms
 
-  Logs go to ~/Library/Logs/save.log (adjust below; launchd creates the
+  Logs go to ~/Library/Logs/comms.log (adjust below; launchd creates the
   file, but the ~/Library/Logs directory must exist).
 -->
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
 	<key>Label</key>
-	<string>com.user.save</string>
+	<string>com.user.comms</string>
 
 	<key>ProgramArguments</key>
 	<array>
-		<string>/usr/local/bin/save</string>
+		<string>/usr/local/bin/comms</string>
 		<string>run</string>
 	</array>
 
@@ -80,8 +80,8 @@
 	<string>Background</string>
 
 	<key>StandardOutPath</key>
-	<string>/Users/CHANGE_ME/Library/Logs/save.log</string>
+	<string>/Users/CHANGE_ME/Library/Logs/comms.log</string>
 	<key>StandardErrorPath</key>
-	<string>/Users/CHANGE_ME/Library/Logs/save.log</string>
+	<string>/Users/CHANGE_ME/Library/Logs/comms.log</string>
 </dict>
 </plist>

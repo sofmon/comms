@@ -22,11 +22,11 @@ import (
 	"git.sr.ht/~rockorager/go-jmap/mail/email"
 	"git.sr.ht/~rockorager/go-jmap/mail/mailbox"
 
-	"save/internal/archive"
-	"save/internal/config"
-	"save/internal/naming"
-	"save/internal/retry"
-	"save/internal/state"
+	"comms/internal/archive"
+	"comms/internal/config"
+	"comms/internal/naming"
+	"comms/internal/retry"
+	"comms/internal/state"
 )
 
 var testReceived = time.Date(2026, 8, 4, 10, 0, 0, 0, time.UTC)

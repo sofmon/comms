@@ -4,7 +4,7 @@ package naming
 //
 // iCloud Drive (CloudDocs behind the modern FileProvider) SILENTLY refuses to
 // sync any item whose NAME matches a built-in exclusion list. The item is
-// written to disk, hashed into the state DB, reported clean by `save verify`
+// written to disk, hashed into the state DB, reported clean by `comms verify`
 // — and never leaves the machine. That is the worst failure mode this
 // archiver can have, so every name it generates is checked here.
 //

@@ -133,7 +133,7 @@ type iopolParam struct {
 // of silently pulling the bytes down over the network. New processes inherit
 // the policy, and the system default for a process outside a GUI login
 // session is already OFF (setiopolicy_np(3)); this makes it explicit and
-// unconditional for `save verify`.
+// unconditional for `comms verify`.
 //
 // libSystem's setiopolicy_np() cannot be called without cgo, so this issues
 // the underlying iopolicysys(2) trap directly. unix.Syscall is implemented in

@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"save/internal/config"
-	"save/internal/state"
+	"comms/internal/config"
+	"comms/internal/state"
 )
 
 // TestStatusPerInstanceSections: every configured instance gets its own

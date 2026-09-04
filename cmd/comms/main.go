@@ -1,6 +1,6 @@
 package main
 
-import "save/internal/cli"
+import "comms/internal/cli"
 
 func main() {
 	cli.Execute()

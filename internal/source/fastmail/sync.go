@@ -12,11 +12,11 @@ import (
 	"git.sr.ht/~rockorager/go-jmap/mail/email"
 	"git.sr.ht/~rockorager/go-jmap/mail/mailbox"
 
-	"save/internal/archive"
-	"save/internal/emailpipe"
-	"save/internal/naming"
-	"save/internal/retry"
-	"save/internal/state"
+	"comms/internal/archive"
+	"comms/internal/emailpipe"
+	"comms/internal/naming"
+	"comms/internal/retry"
+	"comms/internal/state"
 )
 
 // emailProps are the Email/get properties for sync. The plan's set is
@@ -642,7 +642,7 @@ func (s *Source) archiveFallback(ctx context.Context, c *conn, boxes *mailboxes,
 }
 
 // recordSkips persists every attachment the policy refused, so the note and
-// the state DB tell the same story and `save refetch` can find the bytes
+// the state DB tell the same story and `comms refetch` can find the bytes
 // again after a policy widening.
 //
 // A policy skip is NOT an item failure: it never touches the failures ledger

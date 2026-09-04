@@ -1,5 +1,5 @@
 // Package lock provides the flock-based single-instance guard shared by
-// `save sync` and `save run`: only one process may touch the state DB and
+// `comms sync` and `comms run`: only one process may touch the state DB and
 // archive tree at a time.
 package lock
 
@@ -17,7 +17,7 @@ import (
 // Acquire takes an exclusive non-blocking flock on <stateDir>/lock and
 // returns an idempotent release function. flock associates the lock with
 // the open file description, so a second Acquire — from another process or
-// this one — fails immediately with a clear "another save instance is
+// this one — fails immediately with a clear "another comms instance is
 // running" error instead of blocking. The lock also dies with the process,
 // so a crash can never leave it stuck.
 func Acquire(stateDir string) (func(), error) {
@@ -29,7 +29,7 @@ func Acquire(stateDir string) (func(), error) {
 	if err := unix.Flock(int(f.Fd()), unix.LOCK_EX|unix.LOCK_NB); err != nil {
 		f.Close()
 		if errors.Is(err, unix.EWOULDBLOCK) {
-			return nil, fmt.Errorf("another save instance is running (lock %s is held) — stop it or wait for it to finish", path)
+			return nil, fmt.Errorf("another comms instance is running (lock %s is held) — stop it or wait for it to finish", path)
 		}
 		return nil, fmt.Errorf("flock %s: %w", path, err)
 	}

@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"save/internal/naming"
-	"save/internal/state"
+	"comms/internal/naming"
+	"comms/internal/state"
 )
 
 // chatInstance is the chat instance of the "work" account; every chat row

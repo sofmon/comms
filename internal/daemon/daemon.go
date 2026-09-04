@@ -1,4 +1,4 @@
-// Package daemon schedules the sync loops for `save run`: one goroutine per
+// Package daemon schedules the sync loops for `comms run`: one goroutine per
 // source INSTANCE — one account's one source kind, e.g. "gmail:work" — each
 // with an independent jittered interval (a multi-hour Gmail backfill on one
 // account must never delay another account, nor the 2-minute Chat cadence,
@@ -15,7 +15,7 @@ import (
 	"sync"
 	"time"
 
-	"save/internal/retry"
+	"comms/internal/retry"
 )
 
 // DegradedMultiplier scales a runner's interval while its auth is broken:
@@ -26,7 +26,7 @@ const DegradedMultiplier = 10
 
 // Runner is one scheduled source instance. Name is its instance id
 // ("gmail:work"), which every log line of this loop carries. Pass is the
-// shared single-pass sync closure (the same code path `save sync` runs
+// shared single-pass sync closure (the same code path `comms sync` runs
 // once); Check is the cheap auth probe used while the instance is degraded.
 type Runner struct {
 	Name     string

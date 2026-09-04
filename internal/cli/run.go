@@ -6,7 +6,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"save/internal/daemon"
+	"comms/internal/daemon"
 )
 
 func newRunCmd() *cobra.Command {
@@ -56,7 +56,7 @@ func runDaemon() error {
 		runners = append(runners, daemon.Runner{
 			Name:     s.inst.ID,
 			Interval: interval,
-			// Each loop iteration is the exact single pass `save sync` runs.
+			// Each loop iteration is the exact single pass `comms sync` runs.
 			Pass:  func(ctx context.Context) error { return a.runSourcePass(ctx, conn) },
 			Check: conn.Check,
 		})

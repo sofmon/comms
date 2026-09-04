@@ -65,7 +65,7 @@ func TestQuarantineXattrOnWrittenAttachment(t *testing.T) {
 		}
 	}
 
-	// The note is save's own text; tagging it would claim it was downloaded.
+	// The note is comms's own text; tagging it would claim it was downloaded.
 	if _, ok := getXattr(t, filepath.Join(w.Root, filepath.FromSlash(rel)), xattrQuarantine); ok {
 		t.Error("the .md note was quarantine-tagged")
 	}

@@ -11,8 +11,8 @@ import "context"
 type Source interface {
 	Name() string
 
-	// Check is a cheap auth/config probe used by `save doctor` and
-	// `save status`. It must not mutate any state.
+	// Check is a cheap auth/config probe used by `comms doctor` and
+	// `comms status`. It must not mutate any state.
 	Check(ctx context.Context) error
 
 	// Sync runs one full pass: backfill when no cursor exists, otherwise

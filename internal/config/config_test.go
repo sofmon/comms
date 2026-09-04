@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"save/internal/state"
+	"comms/internal/state"
 )
 
 // clearEnv blanks every env var the package reads so ambient developer
@@ -15,11 +15,11 @@ import (
 func clearEnv(t *testing.T) {
 	t.Helper()
 	for _, k := range []string{
-		"SAVE_CONFIG_DIR", "SAVE_ARCHIVE_ROOT", "SAVE_FASTMAIL_TOKEN",
-		"SAVE_GOOGLE_CLIENT_FILE", "SAVE_GOOGLE_TOKEN_FILE",
-		"SAVE_FASTMAIL_TOKEN_FM", "SAVE_FASTMAIL_TOKEN_FM_TWO",
-		"SAVE_GOOGLE_CLIENT_FILE_WORK", "SAVE_GOOGLE_TOKEN_FILE_WORK",
-		"SAVE_GOOGLE_CLIENT_FILE_PERSONAL", "SAVE_GOOGLE_TOKEN_FILE_PERSONAL",
+		"COMMS_CONFIG_DIR", "COMMS_ARCHIVE_ROOT", "COMMS_FASTMAIL_TOKEN",
+		"COMMS_GOOGLE_CLIENT_FILE", "COMMS_GOOGLE_TOKEN_FILE",
+		"COMMS_FASTMAIL_TOKEN_FM", "COMMS_FASTMAIL_TOKEN_FM_TWO",
+		"COMMS_GOOGLE_CLIENT_FILE_WORK", "COMMS_GOOGLE_TOKEN_FILE_WORK",
+		"COMMS_GOOGLE_CLIENT_FILE_PERSONAL", "COMMS_GOOGLE_TOKEN_FILE_PERSONAL",
 		"XDG_CONFIG_HOME", "XDG_STATE_HOME", "TZ",
 	} {
 		t.Setenv(k, "")
@@ -61,7 +61,7 @@ label   = "personal"
 account = "you@example.net"
 gmail   = true
 chat    = true
-client_file = "/etc/save/google-client-personal.json"
+client_file = "/etc/comms/google-client-personal.json"
 
 [[fastmail]]
 label   = "fm"
@@ -71,7 +71,7 @@ account = "me@fastmail.com"
 func TestLoadDefaults(t *testing.T) {
 	clearEnv(t)
 	cfgDir := t.TempDir()
-	t.Setenv("SAVE_CONFIG_DIR", cfgDir)
+	t.Setenv("COMMS_CONFIG_DIR", cfgDir)
 
 	cfg, err := Load(writeConfig(t, minimalValid))
 	if err != nil {
@@ -114,7 +114,7 @@ func TestLoadDefaults(t *testing.T) {
 
 func TestInstances(t *testing.T) {
 	clearEnv(t)
-	t.Setenv("SAVE_CONFIG_DIR", t.TempDir())
+	t.Setenv("COMMS_CONFIG_DIR", t.TempDir())
 	cfg, err := Load(writeConfig(t, twoGoogle))
 	if err != nil {
 		t.Fatalf("Load: %v", err)
@@ -166,7 +166,7 @@ func TestInstances(t *testing.T) {
 
 func TestInstancesSkipDisabledHalves(t *testing.T) {
 	clearEnv(t)
-	t.Setenv("SAVE_CONFIG_DIR", t.TempDir())
+	t.Setenv("COMMS_CONFIG_DIR", t.TempDir())
 	cfg, err := Load(writeConfig(t, `
 [[google]]
 label   = "mailonly"
@@ -193,7 +193,7 @@ chat    = true
 func TestLoadFull(t *testing.T) {
 	clearEnv(t)
 	cfgDir := t.TempDir()
-	t.Setenv("SAVE_CONFIG_DIR", cfgDir)
+	t.Setenv("COMMS_CONFIG_DIR", cfgDir)
 	cfg, err := Load(writeConfig(t, `
 archive_root = "/data/archive"
 timezone     = "Europe/Amsterdam"
@@ -262,15 +262,15 @@ client_file = "~/creds/personal.json"
 func TestEnvOverridesPerLabel(t *testing.T) {
 	clearEnv(t)
 	cfgDir := t.TempDir()
-	t.Setenv("SAVE_CONFIG_DIR", cfgDir)
-	t.Setenv("SAVE_ARCHIVE_ROOT", "/env/root")
-	t.Setenv("SAVE_GOOGLE_CLIENT_FILE_WORK", "/env/client-work.json")
-	t.Setenv("SAVE_GOOGLE_TOKEN_FILE_PERSONAL", "/env/token-personal.json")
-	t.Setenv("SAVE_FASTMAIL_TOKEN_FM", "fmt1-secret")
+	t.Setenv("COMMS_CONFIG_DIR", cfgDir)
+	t.Setenv("COMMS_ARCHIVE_ROOT", "/env/root")
+	t.Setenv("COMMS_GOOGLE_CLIENT_FILE_WORK", "/env/client-work.json")
+	t.Setenv("COMMS_GOOGLE_TOKEN_FILE_PERSONAL", "/env/token-personal.json")
+	t.Setenv("COMMS_FASTMAIL_TOKEN_FM", "fmt1-secret")
 	// The unsuffixed forms must be IGNORED while several accounts of the
 	// kind exist: they would silently point both identities at one file.
-	t.Setenv("SAVE_GOOGLE_CLIENT_FILE", "/env/shared-client.json")
-	t.Setenv("SAVE_GOOGLE_TOKEN_FILE", "/env/shared-token.json")
+	t.Setenv("COMMS_GOOGLE_CLIENT_FILE", "/env/shared-client.json")
+	t.Setenv("COMMS_GOOGLE_TOKEN_FILE", "/env/shared-token.json")
 
 	cfg, err := Load(writeConfig(t, twoGoogle))
 	if err != nil {
@@ -289,7 +289,7 @@ func TestEnvOverridesPerLabel(t *testing.T) {
 	if personal.TokenFilePath != "/env/token-personal.json" {
 		t.Errorf("personal TokenFilePath = %q", personal.TokenFilePath)
 	}
-	if personal.ClientFilePath != "/etc/save/google-client-personal.json" {
+	if personal.ClientFilePath != "/etc/comms/google-client-personal.json" {
 		t.Errorf("personal ClientFilePath = %q, want the config value (unsuffixed env must not apply)", personal.ClientFilePath)
 	}
 	if cfg.FastMail[0].Token != "fmt1-secret" {
@@ -299,10 +299,10 @@ func TestEnvOverridesPerLabel(t *testing.T) {
 
 func TestEnvOverridesUnsuffixedSingleAccount(t *testing.T) {
 	clearEnv(t)
-	t.Setenv("SAVE_CONFIG_DIR", t.TempDir())
-	t.Setenv("SAVE_GOOGLE_CLIENT_FILE", "/env/client.json")
-	t.Setenv("SAVE_GOOGLE_TOKEN_FILE", "/env/token.json")
-	t.Setenv("SAVE_FASTMAIL_TOKEN", "fmt1-secret")
+	t.Setenv("COMMS_CONFIG_DIR", t.TempDir())
+	t.Setenv("COMMS_GOOGLE_CLIENT_FILE", "/env/client.json")
+	t.Setenv("COMMS_GOOGLE_TOKEN_FILE", "/env/token.json")
+	t.Setenv("COMMS_FASTMAIL_TOKEN", "fmt1-secret")
 
 	cfg, err := Load(writeConfig(t, minimalValid))
 	if err != nil {
@@ -317,7 +317,7 @@ func TestEnvOverridesUnsuffixedSingleAccount(t *testing.T) {
 	}
 
 	// The per-label form still wins over the unsuffixed one.
-	t.Setenv("SAVE_GOOGLE_CLIENT_FILE_WORK", "/env/client-work.json")
+	t.Setenv("COMMS_GOOGLE_CLIENT_FILE_WORK", "/env/client-work.json")
 	cfg, err = Load(writeConfig(t, minimalValid))
 	if err != nil {
 		t.Fatalf("Load: %v", err)
@@ -335,7 +335,7 @@ func TestEnvSuffix(t *testing.T) {
 
 func TestTildeExpansion(t *testing.T) {
 	clearEnv(t)
-	t.Setenv("SAVE_CONFIG_DIR", t.TempDir())
+	t.Setenv("COMMS_CONFIG_DIR", t.TempDir())
 	home, err := os.UserHomeDir()
 	if err != nil {
 		t.Fatal(err)
@@ -350,7 +350,7 @@ func TestTildeExpansion(t *testing.T) {
 	}
 
 	// Env override values are tilde-expanded too.
-	t.Setenv("SAVE_ARCHIVE_ROOT", "~/EnvArchive")
+	t.Setenv("COMMS_ARCHIVE_ROOT", "~/EnvArchive")
 	cfg, err = Load(writeConfig(t, minimalValid))
 	if err != nil {
 		t.Fatalf("Load: %v", err)
@@ -360,7 +360,7 @@ func TestTildeExpansion(t *testing.T) {
 	}
 
 	// ~user is not supported and must fail loudly, not silently misresolve.
-	t.Setenv("SAVE_ARCHIVE_ROOT", "") // undo the override from the case above
+	t.Setenv("COMMS_ARCHIVE_ROOT", "") // undo the override from the case above
 	if _, err := Load(writeConfig(t, `archive_root = "~root/x"`+minimalValid)); err == nil {
 		t.Error("want error for ~user path")
 	}
@@ -371,7 +371,7 @@ func TestTildeExpansion(t *testing.T) {
 
 func TestLoadErrors(t *testing.T) {
 	clearEnv(t)
-	t.Setenv("SAVE_CONFIG_DIR", t.TempDir())
+	t.Setenv("COMMS_CONFIG_DIR", t.TempDir())
 	tests := []struct {
 		name    string
 		content string
@@ -410,7 +410,7 @@ func TestLoadErrors(t *testing.T) {
 
 func TestLabelValidation(t *testing.T) {
 	clearEnv(t)
-	t.Setenv("SAVE_CONFIG_DIR", t.TempDir())
+	t.Setenv("COMMS_CONFIG_DIR", t.TempDir())
 	tests := []struct {
 		name    string
 		content string
@@ -474,7 +474,7 @@ func TestLabelValidation(t *testing.T) {
 
 func TestLegacySingleAccountFormatIsRejected(t *testing.T) {
 	clearEnv(t)
-	t.Setenv("SAVE_CONFIG_DIR", t.TempDir())
+	t.Setenv("COMMS_CONFIG_DIR", t.TempDir())
 	legacy := []struct{ name, content string }{
 		{"gmail table", "[gmail]\nenabled = true\naccount = \"a@b.c\"\n"},
 		{"gchat table", "[gchat]\nenabled = true\n"},
@@ -511,15 +511,15 @@ func TestLegacySingleAccountFormatIsRejected(t *testing.T) {
 func TestLoadMissingFile(t *testing.T) {
 	clearEnv(t)
 	_, err := Load(filepath.Join(t.TempDir(), "config.toml"))
-	if err == nil || !strings.Contains(err.Error(), "save init") {
-		t.Fatalf("want error pointing at `save init`, got: %v", err)
+	if err == nil || !strings.Contains(err.Error(), "comms init") {
+		t.Fatalf("want error pointing at `comms init`, got: %v", err)
 	}
 }
 
 func TestWriteSkeleton(t *testing.T) {
 	clearEnv(t)
 	cfgDir := filepath.Join(t.TempDir(), "cfg")
-	t.Setenv("SAVE_CONFIG_DIR", cfgDir)
+	t.Setenv("COMMS_CONFIG_DIR", cfgDir)
 	path := filepath.Join(cfgDir, "config.toml")
 
 	if err := WriteSkeleton(path); err != nil {
@@ -628,7 +628,7 @@ func TestPinTimezoneRejectsInvalidZone(t *testing.T) {
 func TestPinTimezoneSkeletonRoundTrip(t *testing.T) {
 	clearEnv(t)
 	cfgDir := t.TempDir()
-	t.Setenv("SAVE_CONFIG_DIR", cfgDir)
+	t.Setenv("COMMS_CONFIG_DIR", cfgDir)
 	path := filepath.Join(cfgDir, "config.toml")
 	if err := WriteSkeleton(path); err != nil {
 		t.Fatal(err)

@@ -17,18 +17,18 @@ import (
 
 	"golang.org/x/oauth2"
 
-	"save/internal/archive"
-	"save/internal/config"
-	"save/internal/googleauth"
-	"save/internal/lock"
-	"save/internal/paths"
-	"save/internal/policy"
-	"save/internal/ratelimit"
-	"save/internal/source"
-	"save/internal/source/fastmail"
-	"save/internal/source/gchat"
-	"save/internal/source/gmail"
-	"save/internal/state"
+	"comms/internal/archive"
+	"comms/internal/config"
+	"comms/internal/googleauth"
+	"comms/internal/lock"
+	"comms/internal/paths"
+	"comms/internal/policy"
+	"comms/internal/ratelimit"
+	"comms/internal/source"
+	"comms/internal/source/fastmail"
+	"comms/internal/source/gchat"
+	"comms/internal/source/gmail"
+	"comms/internal/state"
 )
 
 // Limiter and housekeeping parameters chosen per the plan; the Gmail
@@ -216,8 +216,8 @@ func openApp() (*app, error) {
 // digest differs it says so, loudly, and STOPS THERE: a changed policy is
 // never acted on by a sync or by the daemon, because acting on it would mean
 // a typo in [attachments] could quietly pull gigabytes onto a volume that is
-// already nearly full. `save status` reports how much of the backlog the new
-// policy would accept; `save refetch` is the only thing that fetches it, and
+// already nearly full. `comms status` reports how much of the backlog the new
+// policy would accept; `comms refetch` is the only thing that fetches it, and
 // the only thing that advances the recorded digest.
 func (a *app) checkPolicyDigest() error {
 	digest := a.policy.PolicyDigest()
@@ -230,7 +230,7 @@ func (a *app) checkPolicyDigest() error {
 		return a.db.SetAttachmentPolicyDigest(digest)
 	case recorded != digest:
 		a.log.Warn("the attachment policy has changed since this archive was last reconsidered; "+
-			"nothing is re-fetched automatically — run `save refetch --dry-run` to see what it would now accept",
+			"nothing is re-fetched automatically — run `comms refetch --dry-run` to see what it would now accept",
 			"recorded", recorded, "now", digest)
 	}
 	return nil
@@ -381,7 +381,7 @@ func (a *app) buildSources(ctx context.Context, only []string) ([]boundSource, e
 			if acct.Token == "" {
 				if err := paths.CheckCredentialPerms(acct.TokenFilePath); err != nil {
 					if errors.Is(err, fs.ErrNotExist) {
-						return nil, fmt.Errorf("%s (%s): no FastMail token at %s — run `save auth fastmail %s`",
+						return nil, fmt.Errorf("%s (%s): no FastMail token at %s — run `comms auth fastmail %s`",
 							in.ID, acct.Account, acct.TokenFilePath, acct.Label)
 					}
 					return nil, err
@@ -500,12 +500,12 @@ func googleTokenSource(ctx context.Context, acct config.GoogleAccount) (oauth2.T
 // checkGoogleCredentials verifies that one account's OAuth client and token
 // files exist, are private, and that the stored grant still covers the
 // scopes the config now needs. Every message names the account: with
-// several [[google]] blocks a bare "run `save auth google`" would not say
+// several [[google]] blocks a bare "run `comms auth google`" would not say
 // which one is broken.
 func checkGoogleCredentials(acct config.GoogleAccount) error {
 	if err := paths.CheckCredentialPerms(acct.ClientFilePath); err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
-			return fmt.Errorf("account %q (%s): no Google OAuth client file at %s — download a Desktop-app client JSON from the Google Cloud Console (run `save doctor` for the walkthrough)",
+			return fmt.Errorf("account %q (%s): no Google OAuth client file at %s — download a Desktop-app client JSON from the Google Cloud Console (run `comms doctor` for the walkthrough)",
 				acct.Label, acct.Account, acct.ClientFilePath)
 		}
 		return fmt.Errorf("account %q (%s): %w", acct.Label, acct.Account, err)
@@ -514,11 +514,11 @@ func checkGoogleCredentials(acct config.GoogleAccount) error {
 	missing, err := googleauth.ScopeDrift(acct.TokenFilePath, scopes)
 	switch {
 	case errors.Is(err, googleauth.ErrNeedsAuth):
-		return fmt.Errorf("account %q (%s): %w — run `save auth google %s`", acct.Label, acct.Account, err, acct.Label)
+		return fmt.Errorf("account %q (%s): %w — run `comms auth google %s`", acct.Label, acct.Account, err, acct.Label)
 	case err != nil:
 		return fmt.Errorf("account %q (%s): %w", acct.Label, acct.Account, err)
 	case len(missing) > 0:
-		return fmt.Errorf("account %q (%s): the stored Google token %s is missing scopes the config now needs (%v) — re-run `save auth google %s`",
+		return fmt.Errorf("account %q (%s): the stored Google token %s is missing scopes the config now needs (%v) — re-run `comms auth google %s`",
 			acct.Label, acct.Account, acct.TokenFilePath, missing, acct.Label)
 	}
 	if err := paths.CheckCredentialPerms(acct.TokenFilePath); err != nil {
@@ -527,7 +527,7 @@ func checkGoogleCredentials(acct config.GoogleAccount) error {
 	return nil
 }
 
-// runSourcePass is THE single sync pass, shared verbatim by `save sync` and
+// runSourcePass is THE single sync pass, shared verbatim by `comms sync` and
 // every daemon loop: record the run, run the connector's Sync, render any
 // dirty chat day files, finish the run, prune old run rows.
 func (a *app) runSourcePass(ctx context.Context, src source.Source) error {
@@ -615,7 +615,7 @@ func (a *app) triagePass(ctx context.Context, instanceID string) (triageTally, e
 
 // healChatDays renders every dirty chat day of EVERY instance. Startup
 // healing cannot be scoped to the instances syncing this run: a crash
-// leaves whichever account was mid-write dirty, and `save sync --source X`
+// leaves whichever account was mid-write dirty, and `comms sync --source X`
 // would otherwise never repair account Y.
 func (a *app) healChatDays(ctx context.Context) error {
 	files, err := a.db.AllDirtyDayFiles()

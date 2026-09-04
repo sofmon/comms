@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"save/internal/state"
+	"comms/internal/state"
 )
 
 const noteHead = `---

@@ -67,7 +67,7 @@ func (d *DB) IsSkipped(source, id string) (bool, error) {
 }
 
 // ListFailures returns the whole ledger ordered by source then id, for
-// `save status`.
+// `comms status`.
 func (d *DB) ListFailures() ([]Failure, error) {
 	rows, err := d.sql.Query(`
 		SELECT source, id, attempts, COALESCE(last_error, ''), last_at

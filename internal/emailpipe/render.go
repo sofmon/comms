@@ -323,7 +323,7 @@ func isBodyPart(p *enmime.Part, htmlBody *enmime.Part) bool {
 // sniffExt returns a file extension (with leading dot) detected from
 // content, or "" when nothing recognizable is found.
 //
-// The detection covers the WHOLE buffer: save/internal/policy's package init
+// The detection covers the WHOLE buffer: comms/internal/policy's package init
 // calls mimetype.SetLimit(0). With the library's 4096-byte default an
 // ordinary .docx whose word/ entry sits past 4 KB sniffs as application/zip,
 // and the allowlist would refuse a real business document.

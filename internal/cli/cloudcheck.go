@@ -1,6 +1,6 @@
 package cli
 
-// `save doctor`'s archive-storage preflight.
+// `comms doctor`'s archive-storage preflight.
 //
 // Putting archive_root inside iCloud Drive (an Obsidian vault, say) is a
 // perfectly reasonable thing to want, and it is also the configuration in
@@ -8,7 +8,7 @@ package cli
 //
 //   - the state database is a WAL-mode SQLite file; a sync agent copying it
 //     and its -wal/-shm sidecars mid-transaction corrupts it;
-//   - "Optimize Mac Storage" evicts archived files, so `save verify` can no
+//   - "Optimize Mac Storage" evicts archived files, so `comms verify` can no
 //     longer read what it wrote without pulling it back over the network;
 //   - the archive counts against BOTH local disk and the iCloud storage plan;
 //   - the 0600/0700 hardening is a local-filesystem property and does not
@@ -27,8 +27,8 @@ import (
 
 	"github.com/adrg/xdg"
 
-	"save/internal/naming"
-	"save/internal/paths"
+	"comms/internal/naming"
+	"comms/internal/paths"
 )
 
 // evictionFreeBytes is the free-space mark below which macOS starts evicting
@@ -114,7 +114,7 @@ func underDir(dir, path string) bool { return paths.UnderDir(dir, path) }
 // file a move can carry across.
 func (d *doctorReport) checkSpamRoot(archiveRoot, spamRoot string, env cloudEnv) {
 	d.section("noise triage — spam_root %s", spamRoot)
-	d.ok("notes triaged as noise move here (with their attachment folders) at the same YYYY/MM/DD path; nothing is ever deleted, and `save untriage` moves them back")
+	d.ok("notes triaged as noise move here (with their attachment folders) at the same YYYY/MM/DD path; nothing is ever deleted, and `comms untriage` moves them back")
 
 	if env.device != nil {
 		switch same, err := sameDevice(env.device, archiveRoot, spamRoot); {
@@ -186,7 +186,7 @@ func (d *doctorReport) checkArchiveStorage(root string, env cloudEnv) {
 	d.checkFreeSpace(root, env)
 	d.checkArchivePathBudget(root)
 
-	d.info("everything archived here leaves this machine for Apple's servers and is re-downloaded onto every device signed into the same account; on those devices it lands with the provider's own permissions (0644 files, 0755 directories), so save's local 0600/0700 hardening does not travel with it")
+	d.info("everything archived here leaves this machine for Apple's servers and is re-downloaded onto every device signed into the same account; on those devices it lands with the provider's own permissions (0644 files, 0755 directories), so comms's local 0600/0700 hardening does not travel with it")
 	d.info("an archive of tens of thousands of small files will make Obsidian's mobile app slow to open the vault and keep fileproviderd busy indexing; consider keeping the archive in its own vault, or excluding the folder from Obsidian's search")
 }
 
@@ -201,8 +201,8 @@ func (d *doctorReport) checkStateDBOutside(dom cloudDomain) {
 		d.ok("state database %s is outside the sync tree", dbPath)
 		return
 	}
-	d.bad("Move the state directory onto local disk and re-run `save sync`:\n"+
-		"  the default is ~/.local/state/save, overridden by $XDG_STATE_HOME.\n"+
+	d.bad("Move the state directory onto local disk and re-run `comms sync`:\n"+
+		"  the default is ~/.local/state/comms, overridden by $XDG_STATE_HOME.\n"+
 		"Deleting the database is safe — the next sync re-enumerates and skips\n"+
 		"everything already on disk — so if it is already damaged, delete it.",
 		"state database %s is inside the sync tree %s — SQLite's WAL and shared-memory sidecars will be synced out of step with the database and corrupt it", dbPath, dom.root)
@@ -217,9 +217,9 @@ func (d *doctorReport) checkOptimizeStorage(env cloudEnv) {
 	on, known := env.optimize()
 	switch {
 	case !known:
-		d.info(`could not read iCloud Drive's "Optimize Mac Storage" setting (com.apple.bird optimize-storage); if it is on, macOS may evict archived files and 'save verify' will skip them`)
+		d.info(`could not read iCloud Drive's "Optimize Mac Storage" setting (com.apple.bird optimize-storage); if it is on, macOS may evict archived files and 'comms verify' will skip them`)
 	case on:
-		d.warn(`"Optimize Mac Storage" is ON — macOS may evict archived files, leaving placeholders whose bytes come back only on demand (about a second each, and only while online). Turn it off in System Settings > [your name] > iCloud > iCloud Drive, or right-click the archive folder in Finder and choose "Keep Downloaded" to pin just this tree. 'save verify' skips evicted files; 'save verify --materialize' downloads them.`)
+		d.warn(`"Optimize Mac Storage" is ON — macOS may evict archived files, leaving placeholders whose bytes come back only on demand (about a second each, and only while online). Turn it off in System Settings > [your name] > iCloud > iCloud Drive, or right-click the archive folder in Finder and choose "Keep Downloaded" to pin just this tree. 'comms verify' skips evicted files; 'comms verify --materialize' downloads them.`)
 	default:
 		d.ok(`"Optimize Mac Storage" is off — archived files stay on local disk`)
 	}
@@ -253,10 +253,10 @@ func (d *doctorReport) checkFreeSpace(root string, env cloudEnv) {
 // refuses to sync.
 func (d *doctorReport) checkArchivePathBudget(root string) {
 	if budget := naming.PathBudget(root); budget < deepestArchivePathBytes {
-		d.warn("archive_root is %d bytes long, leaving %d for the rest of the path — the deepest file save writes needs about %d, so some attachments will be refused rather than written to a path nothing can open. Shorten the vault or folder name.",
+		d.warn("archive_root is %d bytes long, leaving %d for the rest of the path — the deepest file comms writes needs about %d, so some attachments will be refused rather than written to a path nothing can open. Shorten the vault or folder name.",
 			len(root), budget, deepestArchivePathBytes)
 	} else {
-		d.ok("path budget: %d bytes left under archive_root (the deepest file save writes needs about %d)", budget, deepestArchivePathBytes)
+		d.ok("path budget: %d bytes left under archive_root (the deepest file comms writes needs about %d)", budget, deepestArchivePathBytes)
 	}
 	if bad := naming.FirstSyncExcluded(root); bad != "" {
 		d.warn("the path component %q is on iCloud's filename exclusion list, so NOTHING under archive_root will ever be uploaded — the files stay on this Mac and the provider reports no error. Rename that folder.", bad)

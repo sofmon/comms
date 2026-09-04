@@ -13,10 +13,10 @@ import (
 
 	chat "google.golang.org/api/chat/v1"
 
-	"save/internal/archive"
-	"save/internal/naming"
-	"save/internal/policy"
-	"save/internal/state"
+	"comms/internal/archive"
+	"comms/internal/naming"
+	"comms/internal/policy"
+	"comms/internal/state"
 )
 
 const (
@@ -325,7 +325,7 @@ type attachPlan struct {
 //
 // A skip's SanitizedName and the pending row's basename are the same string,
 // and the collision table is advanced for refused candidates too, so a later
-// `save refetch` under a widened policy writes exactly the name recorded here
+// `comms refetch` under a widened policy writes exactly the name recorded here
 // and cannot renumber the attachments around it.
 func pendingAttachments(src, tag, stem string, sp spaceMeta, m *chat.Message, local time.Time, mirrorDrive bool, pol *policy.Policy) attachPlan {
 	if len(m.Attachment) == 0 {

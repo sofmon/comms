@@ -8,10 +8,10 @@ import (
 	"testing"
 	"time"
 
-	"save/internal/config"
-	"save/internal/paths"
-	"save/internal/state"
-	"save/internal/triage"
+	"comms/internal/config"
+	"comms/internal/paths"
+	"comms/internal/state"
+	"comms/internal/triage"
 )
 
 // archivingSource is a connector stub whose Sync archives one note the

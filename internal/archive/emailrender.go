@@ -7,8 +7,8 @@ import (
 	"strings"
 	"time"
 
-	"save/internal/emailpipe"
-	"save/internal/policy"
+	"comms/internal/emailpipe"
+	"comms/internal/policy"
 )
 
 // SkipDisposition says what happened to the bytes of an attachment the policy
@@ -135,7 +135,7 @@ type skippedEntry struct {
 	Reason       string `yaml:"reason"` // a policy.Reason* constant
 	Detail       string `yaml:"detail,omitempty"`
 	Disposition  string `yaml:"disposition"` // a SkipDisposition constant
-	Recoverable  bool   `yaml:"recoverable"` // `save refetch` can retry this row
+	Recoverable  bool   `yaml:"recoverable"` // `comms refetch` can retry this row
 }
 
 // renderEmailMD renders the full .md bytes: YAML frontmatter, body, and — even
@@ -268,9 +268,9 @@ func writeSkippedEntry(buf *bytes.Buffer, f emailpipe.File, d SkipDisposition) {
 // first.
 func recoveryHint(reason string) string {
 	if policy.Transient(reason) {
-		return "`save refetch` retries this on a later run without any config change."
+		return "`comms refetch` retries this on a later run without any config change."
 	}
-	return "Widen the `[attachments]` policy and run `save refetch` to retrieve it."
+	return "Widen the `[attachments]` policy and run `comms refetch` to retrieve it."
 }
 
 // reasonEnglish translates a policy.Reason* constant into the plain sentence

@@ -42,13 +42,13 @@ import (
 	"git.sr.ht/~rockorager/go-jmap/core"
 	"git.sr.ht/~rockorager/go-jmap/mail"
 
-	"save/internal/archive"
-	"save/internal/config"
-	"save/internal/policy"
-	"save/internal/ratelimit"
-	"save/internal/retry"
-	"save/internal/source"
-	"save/internal/state"
+	"comms/internal/archive"
+	"comms/internal/config"
+	"comms/internal/policy"
+	"comms/internal/ratelimit"
+	"comms/internal/retry"
+	"comms/internal/source"
+	"comms/internal/state"
 )
 
 var _ source.Source = (*Source)(nil)
@@ -93,7 +93,7 @@ var (
 type TokenFunc func() (string, error)
 
 // FileTokenSource returns a TokenFunc that yields literal when non-empty
-// (this account's $SAVE_FASTMAIL_TOKEN[_<LABEL>] override, resolved into
+// (this account's $COMMS_FASTMAIL_TOKEN[_<LABEL>] override, resolved into
 // FastMailAccount.Token) and otherwise reads path — the account's per-label
 // token file — trimming surrounding whitespace.
 func FileTokenSource(literal, path string) TokenFunc {

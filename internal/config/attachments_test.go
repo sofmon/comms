@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"save/internal/policy"
+	"comms/internal/policy"
 )
 
 // withAccounts appends the minimum accounts a config needs to be valid, so a
@@ -20,7 +20,7 @@ gmail   = true
 
 func TestAttachmentDefaults(t *testing.T) {
 	clearEnv(t)
-	t.Setenv("SAVE_CONFIG_DIR", t.TempDir())
+	t.Setenv("COMMS_CONFIG_DIR", t.TempDir())
 
 	cfg, err := Load(writeConfig(t, minimalValid))
 	if err != nil {
@@ -71,7 +71,7 @@ func TestAttachmentDefaults(t *testing.T) {
 
 func TestAttachmentOverrides(t *testing.T) {
 	clearEnv(t)
-	t.Setenv("SAVE_CONFIG_DIR", t.TempDir())
+	t.Setenv("COMMS_CONFIG_DIR", t.TempDir())
 
 	cfg, err := Load(writeConfig(t, withAccounts(`
 [attachments]
@@ -139,7 +139,7 @@ scan_action           = "reject"
 
 func TestAttachmentValidation(t *testing.T) {
 	clearEnv(t)
-	t.Setenv("SAVE_CONFIG_DIR", t.TempDir())
+	t.Setenv("COMMS_CONFIG_DIR", t.TempDir())
 
 	for _, tc := range []struct{ name, block, want string }{
 		{"zero max_size", `max_size = "0"`, "attachments.max_size must be a positive size"},
@@ -178,10 +178,10 @@ func TestAttachmentValidation(t *testing.T) {
 }
 
 // TestAttachmentValidationReportsEverythingAtOnce keeps the errors.Join
-// contract: one run of `save doctor` should list every problem.
+// contract: one run of `comms doctor` should list every problem.
 func TestAttachmentValidationReportsEverythingAtOnce(t *testing.T) {
 	clearEnv(t)
-	t.Setenv("SAVE_CONFIG_DIR", t.TempDir())
+	t.Setenv("COMMS_CONFIG_DIR", t.TempDir())
 	_, err := Load(writeConfig(t, withAccounts(`
 [attachments]
 max_size              = "0"
@@ -202,7 +202,7 @@ on_mismatch           = "warn"
 // time, so every caller computes the same policy digest.
 func TestChatMaxSizeInherits(t *testing.T) {
 	clearEnv(t)
-	t.Setenv("SAVE_CONFIG_DIR", t.TempDir())
+	t.Setenv("COMMS_CONFIG_DIR", t.TempDir())
 	cfg, err := Load(writeConfig(t, withAccounts("[attachments]\nmax_size = \"30MB\"\n")))
 	if err != nil {
 		t.Fatalf("Load: %v", err)
@@ -219,7 +219,7 @@ func TestChatMaxSizeInherits(t *testing.T) {
 	}
 }
 
-// TestSkeletonAttachmentsBlock: `save init` must produce a file that loads,
+// TestSkeletonAttachmentsBlock: `comms init` must produce a file that loads,
 // keeps the documented defaults, and is honest about what quarantine buys.
 func TestSkeletonAttachmentsBlock(t *testing.T) {
 	if !strings.Contains(skeleton, "[attachments]") {
@@ -249,8 +249,8 @@ func TestSkeletonAttachmentsBlock(t *testing.T) {
 		}
 	}
 	// Recoverability is the promise that makes an allowlist acceptable.
-	if !strings.Contains(skeleton, "save refetch") {
-		t.Error("the skeleton must tell the operator that skips are recoverable via `save refetch`")
+	if !strings.Contains(skeleton, "comms refetch") {
+		t.Error("the skeleton must tell the operator that skips are recoverable via `comms refetch`")
 	}
 	if !strings.Contains(skeleton, "NOTHING IS EVER DROPPED SILENTLY") {
 		t.Error("the skeleton must state the never-drop-silently rule")

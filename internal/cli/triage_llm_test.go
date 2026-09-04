@@ -10,8 +10,8 @@ import (
 	"strings"
 	"testing"
 
-	"save/internal/config"
-	"save/internal/state"
+	"comms/internal/config"
+	"comms/internal/state"
 )
 
 // llmServer is a scripted OpenAI-compatible endpoint for the CLI tests.

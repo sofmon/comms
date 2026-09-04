@@ -8,9 +8,9 @@ import (
 	"testing"
 	"time"
 
-	"save/internal/emailpipe"
-	"save/internal/naming"
-	"save/internal/policy"
+	"comms/internal/emailpipe"
+	"comms/internal/naming"
+	"comms/internal/policy"
 )
 
 // skipEmailFixture is a message whose attachments exercise every branch of
@@ -155,13 +155,13 @@ See attached.
 - [notes.txt](<STEM.d/notes.txt>) — **stored despite a policy objection**: its file extension and the content type detected from its bytes disagree (`+"`extension_content_mismatch`"+`) — extension "txt" does not permit application/zip
 - **Not stored — `+"`budget.docm`"+`** — 24576 bytes (24.6 kB), declared `+"`application/vnd.ms-word.document.macroEnabled.12`"+`, detected `+"`application/vnd.openxmlformats-officedocument.wordprocessingml.document`"+`, part `+"`4`"+`
   - Reason: macro-enabled Office documents are refused by extension (`+"`macro_office`"+`) — macro-enabled Office documents are denied by extension
-  - The bytes arrived with the message and were discarded rather than written to disk. Widen the `+"`[attachments]`"+` policy and run `+"`save refetch`"+` to retrieve it.
+  - The bytes arrived with the message and were discarded rather than written to disk. Widen the `+"`[attachments]`"+` policy and run `+"`comms refetch`"+` to retrieve it.
 - **Not stored — `+"`keynote.mp4`"+`** (sent as `+"``Q3 all-hands `final`.mp4``"+`) — 89128960 bytes (89.1 MB), declared `+"`video/mp4`"+`, detected `+"`video/mp4`"+`, part `+"`5`"+`
   - Reason: it is larger than the per-attachment size cap (`+"`over_size_cap`"+`) — 89128960 bytes exceeds the 50000000 byte cap
-  - The bytes arrived with the message and were discarded rather than written to disk. Widen the `+"`[attachments]`"+` policy and run `+"`save refetch`"+` to retrieve it.
+  - The bytes arrived with the message and were discarded rather than written to disk. Widen the `+"`[attachments]`"+` policy and run `+"`comms refetch`"+` to retrieve it.
 - **Not stored — `+"`roster.csv`"+`** — 512 bytes, declared `+"`(no type)`"+`, content not inspected, part `+"`6`"+`
   - Reason: this sync pass had already used up its attachment budget (`+"`over_run_budget`"+`) — this pass already stored 2000000000 bytes
-  - The bytes arrived with the message and were discarded rather than written to disk. `+"`save refetch`"+` retries this on a later run without any config change.
+  - The bytes arrived with the message and were discarded rather than written to disk. `+"`comms refetch`"+` retries this on a later run without any config change.
 `, "STEM", stem)
 
 	w := &Writer{Root: t.TempDir(), TZ: tzAms}

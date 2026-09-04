@@ -12,14 +12,14 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"save/internal/config"
-	"save/internal/policy"
-	"save/internal/state"
+	"comms/internal/config"
+	"comms/internal/policy"
+	"comms/internal/state"
 )
 
 // --- the connector contract -------------------------------------------------
 //
-// `save refetch` owns the SELECTION (which recorded skips the current policy
+// `comms refetch` owns the SELECTION (which recorded skips the current policy
 // would now accept), the LEDGER (which rows become resolved, and how), and
 // the SAFETY RAILS (dry run, free space, digest bookkeeping). A connector
 // owns exactly one thing the CLI cannot do: going back to the source for the
@@ -129,7 +129,7 @@ type RefetchResult struct {
 	Parts []RefetchPart
 }
 
-// Refetcher is the optional connector capability `save refetch` drives. A
+// Refetcher is the optional connector capability `comms refetch` drives. A
 // connector that does not implement it simply cannot be retro-fetched yet;
 // its rows stay in the ledger and are reported, never resolved.
 //
@@ -245,7 +245,7 @@ func runRefetch(out io.Writer, only []string, dryRun bool, reason string) error 
 
 // dryRunRefetch prints the plan and stops. It deliberately does NOT open the
 // app: taking no instance lock is what lets a dry run answer "what would this
-// cost me?" beside a running daemon, the same way `save status` does.
+// cost me?" beside a running daemon, the same way `comms status` does.
 func dryRunRefetch(out io.Writer, only []string, reason string) error {
 	cfg, err := config.Load(config.DefaultPath())
 	if err != nil {
@@ -560,7 +560,7 @@ func (a *app) executeRefetch(ctx context.Context, out io.Writer, plan refetchPla
 	for _, g := range plan.Groups {
 		if err := ctx.Err(); err != nil {
 			tally.Interrupted = true
-			fmt.Fprintf(out, "\ninterrupted — %d attachment(s) fetched so far; re-run `save refetch` to continue\n", tally.Fetched)
+			fmt.Fprintf(out, "\ninterrupted — %d attachment(s) fetched so far; re-run `comms refetch` to continue\n", tally.Fetched)
 			break
 		}
 		if unsupported[g.Source] {
@@ -754,7 +754,7 @@ func (a *app) checkRefetchSpace(want int64) error {
 // finishRefetch prints the outcome and advances the recorded policy digest
 // when — and only when — the whole backlog has been reconsidered under the
 // current policy with nothing left unexplained. A --source or --reason run is
-// partial by construction and never advances it, so `save status` keeps
+// partial by construction and never advances it, so `comms status` keeps
 // nagging until the rest has been looked at.
 func (a *app) finishRefetch(out io.Writer, plan refetchPlan, tally refetchTally) error {
 	fmt.Fprintf(out, "\nfetched %d attachment(s), %s\n", tally.Fetched, byteSize(tally.Bytes))
@@ -768,14 +768,14 @@ func (a *app) finishRefetch(out io.Writer, plan refetchPlan, tally refetchTally)
 		fmt.Fprintf(out, "not attempted: %s cannot retro-fetch yet — its skips are unchanged\n", src)
 	}
 	if tally.Failed > 0 {
-		fmt.Fprintf(out, "failed: %d message(s) — left unresolved, re-run `save refetch`\n", tally.Failed)
+		fmt.Fprintf(out, "failed: %d message(s) — left unresolved, re-run `comms refetch`\n", tally.Failed)
 	}
 	if tally.Unaccounted > 0 {
 		fmt.Fprintf(out, "unaccounted: %d requested part(s) were never reported on — left unresolved\n", tally.Unaccounted)
 	}
 	if tally.Diverged > 0 {
 		fmt.Fprintf(out, "DIVERGED: %d attachment(s) came back with different bytes than recorded.\n"+
-			"  Nothing was overwritten and nothing was resolved; see the failures ledger in `save status`.\n", tally.Diverged)
+			"  Nothing was overwritten and nothing was resolved; see the failures ledger in `comms status`.\n", tally.Diverged)
 	}
 
 	switch {

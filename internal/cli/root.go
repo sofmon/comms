@@ -26,8 +26,8 @@ const version = "0.1.0-dev"
 func newRoot() *cobra.Command {
 	var verbose bool
 	root := &cobra.Command{
-		Use:           "save",
-		Short:         "save archives Gmail, Google Chat, and FastMail locally as Markdown",
+		Use:           "comms",
+		Short:         "comms archives Gmail, Google Chat, and FastMail locally as Markdown",
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		PersistentPreRun: func(cmd *cobra.Command, args []string) {
@@ -56,9 +56,9 @@ func newRoot() *cobra.Command {
 func newVersionCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "version",
-		Short: "Print the save version",
+		Short: "Print the comms version",
 		Run: func(cmd *cobra.Command, args []string) {
-			fmt.Fprintln(cmd.OutOrStdout(), "save", version)
+			fmt.Fprintln(cmd.OutOrStdout(), "comms", version)
 		},
 	}
 }

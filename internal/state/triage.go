@@ -16,7 +16,7 @@ const (
 	TriageNoise TriageVerdict = "noise"
 
 	// TriageSignal: the note belongs in the archive tree. A protected note, a
-	// keep rule, an LLM "not noise", and `save untriage` all record this.
+	// keep rule, an LLM "not noise", and `comms untriage` all record this.
 	TriageSignal TriageVerdict = "signal"
 
 	// TriageUndecided: no layer reached a verdict. The note stays where it is
@@ -38,7 +38,7 @@ const (
 	TriageLayerHeaders = "headers" // layer 1: MIME/header heuristics captured at ingest
 	TriageLayerRules   = "rules"   // layer 2: the user's triage.toml
 	TriageLayerLLM     = "llm"     // layer 3: the optional local model
-	TriageLayerManual  = "manual"  // `save untriage`
+	TriageLayerManual  = "manual"  // `comms untriage`
 	TriageLayerNone    = "none"    // no layer decided
 )
 
@@ -146,7 +146,7 @@ type TriageScope struct {
 
 	// Only narrows a Reclassify to decisions a particular layer made:
 	// "llm" for rows whose disposition_rule is a model decision, "manual"
-	// for rows `save untriage` placed, "rules" for every other row. ""
+	// for rows `comms untriage` placed, "rules" for every other row. ""
 	// means all.
 	Only string
 }
@@ -213,7 +213,7 @@ type TriageRuleCount struct {
 	Count   int64
 }
 
-// TriageCounts is one instance's triage ledger tally for `save status`.
+// TriageCounts is one instance's triage ledger tally for `comms status`.
 type TriageCounts struct {
 	Noise     int64
 	Signal    int64

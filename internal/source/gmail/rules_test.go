@@ -10,7 +10,7 @@ import (
 	gmailv1 "google.golang.org/api/gmail/v1"
 	"google.golang.org/api/googleapi"
 
-	"save/internal/retry"
+	"comms/internal/retry"
 )
 
 func TestDecideScope(t *testing.T) {

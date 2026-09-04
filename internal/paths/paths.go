@@ -1,11 +1,11 @@
-// Package paths resolves save's config and state directories and enforces
+// Package paths resolves comms's config and state directories and enforces
 // the unix-style permission rules for the files inside them.
 //
-// The plan pins unix-style locations on every platform — ~/.config/save and
-// ~/.local/state/save — so we deliberately do not use xdg.ConfigHome /
+// The plan pins unix-style locations on every platform — ~/.config/comms and
+// ~/.local/state/comms — so we deliberately do not use xdg.ConfigHome /
 // xdg.StateHome (on macOS those point at ~/Library/Application Support).
 // github.com/adrg/xdg supplies home-directory resolution; the XDG_* and
-// SAVE_CONFIG_DIR environment overrides are read at call time so tests and
+// COMMS_CONFIG_DIR environment overrides are read at call time so tests and
 // wrappers can redirect them.
 package paths
 
@@ -18,12 +18,12 @@ import (
 	"github.com/adrg/xdg"
 )
 
-const appDir = "save"
+const appDir = "comms"
 
 // ConfigDir returns the directory holding config.toml and credential files:
-// $SAVE_CONFIG_DIR if set, else $XDG_CONFIG_HOME/save, else ~/.config/save.
+// $COMMS_CONFIG_DIR if set, else $XDG_CONFIG_HOME/comms, else ~/.config/comms.
 func ConfigDir() string {
-	if d := os.Getenv("SAVE_CONFIG_DIR"); d != "" {
+	if d := os.Getenv("COMMS_CONFIG_DIR"); d != "" {
 		return d
 	}
 	if d := os.Getenv("XDG_CONFIG_HOME"); d != "" {
@@ -33,7 +33,7 @@ func ConfigDir() string {
 }
 
 // StateDir returns the directory holding state.db and the instance lock:
-// $XDG_STATE_HOME/save if set, else ~/.local/state/save.
+// $XDG_STATE_HOME/comms if set, else ~/.local/state/comms.
 func StateDir() string {
 	if d := os.Getenv("XDG_STATE_HOME"); d != "" {
 		return filepath.Join(d, appDir)

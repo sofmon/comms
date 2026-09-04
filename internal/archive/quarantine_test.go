@@ -14,11 +14,11 @@ import (
 
 // quarantineRE is the shape verified against real on-disk values on macOS 26:
 // flags;lowercase-hex-epoch;agent;uppercase-UUID.
-var quarantineRE = regexp.MustCompile(`^0081;[0-9a-f]+;save;[0-9A-F]{8}-[0-9A-F]{4}-4[0-9A-F]{3}-[89AB][0-9A-F]{3}-[0-9A-F]{12}$`)
+var quarantineRE = regexp.MustCompile(`^0081;[0-9a-f]+;comms;[0-9A-F]{8}-[0-9A-F]{4}-4[0-9A-F]{3}-[89AB][0-9A-F]{3}-[0-9A-F]{12}$`)
 
 func TestQuarantineValue(t *testing.T) {
 	got := quarantineValue(time.Unix(0x68b8a4c0, 0), "3F2504E0-4F89-11D3-9A0C-0305E82C3301")
-	want := "0081;68b8a4c0;save;3F2504E0-4F89-11D3-9A0C-0305E82C3301"
+	want := "0081;68b8a4c0;comms;3F2504E0-4F89-11D3-9A0C-0305E82C3301"
 	if got != want {
 		t.Errorf("quarantineValue = %q, want %q", got, want)
 	}
@@ -80,7 +80,7 @@ func TestOriginWhereFroms(t *testing.T) {
 	}
 }
 
-// TestTagOnlyAttachments: notes are save's own text. Tagging them would claim
+// TestTagOnlyAttachments: notes are comms's own text. Tagging them would claim
 // they were downloaded, and would put Obsidian's own vault files behind a
 // Gatekeeper prompt.
 func TestTagOnlyAttachments(t *testing.T) {
@@ -159,7 +159,7 @@ func TestTagFailureAbortsBeforeAnythingIsVisible(t *testing.T) {
 }
 
 // TestWriteChatAttachmentTags: chat blobs are downloaded bytes and get the
-// same treatment as mail attachments; the day file, which save renders
+// same treatment as mail attachments; the day file, which comms renders
 // itself, does not.
 func TestWriteChatAttachmentTags(t *testing.T) {
 	var tagged []Origin

@@ -19,7 +19,7 @@
 //
 // Every outcome — noise, signal, undecided — is recorded; undecided is never
 // noise. The Decision carries a trace of what each layer saw, for
-// `save triage --explain`.
+// `comms triage --explain`.
 package triage
 
 import (

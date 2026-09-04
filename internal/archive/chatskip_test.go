@@ -4,8 +4,8 @@ import (
 	"strings"
 	"testing"
 
-	"save/internal/policy"
-	"save/internal/state"
+	"comms/internal/policy"
+	"comms/internal/state"
 )
 
 func chatSkip(msgName, partKey, name, reason string) state.SkippedAttachment {
@@ -85,7 +85,7 @@ func TestRenderChatDaySkipResolutions(t *testing.T) {
 	if !strings.Contains(got, "no longer exists upstream") {
 		t.Errorf("a source_gone skip does not say so:\n%s", got)
 	}
-	if strings.Contains(got, "save refetch") {
+	if strings.Contains(got, "comms refetch") {
 		t.Errorf("a source_gone skip still offers a refetch:\n%s", got)
 	}
 

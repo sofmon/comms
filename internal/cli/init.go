@@ -9,9 +9,9 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"save/internal/config"
-	"save/internal/paths"
-	"save/internal/triage"
+	"comms/internal/config"
+	"comms/internal/paths"
+	"comms/internal/triage"
 )
 
 func newInitCmd() *cobra.Command {
@@ -76,15 +76,15 @@ Next steps:
      %s/google-client.json and chmod 600 it
      (Cloud Console: enable the Gmail API and the Google Chat API, set the
      OAuth consent screen audience to "Internal", create a client of type
-     "Desktop app" — `+"`save doctor`"+` re-prints this walkthrough).
+     "Desktop app" — `+"`comms doctor`"+` re-prints this walkthrough).
      An "Internal" client only accepts accounts from its OWN Workspace
      organization: an account in a different org needs its own Cloud
      project and client JSON — point that block's client_file at it.
-  3. save auth google <label>     # once per [[google]] account (or --all)
-  4. save auth fastmail <label>   # once per [[fastmail]] account
-  5. save sync        # first backfill; Gmail can take hours and is resumable
-  6. save run         # daemon — see docs/launchd/com.user.save.plist for autostart
-  7. save triage --dry-run   # later: see which notes the rules in triage.toml
+  3. comms auth google <label>     # once per [[google]] account (or --all)
+  4. comms auth fastmail <label>   # once per [[fastmail]] account
+  5. comms sync        # first backfill; Gmail can take hours and is resumable
+  6. comms run         # daemon — see docs/launchd/com.user.comms.plist for autostart
+  7. comms triage --dry-run   # later: see which notes the rules in triage.toml
                              # would file under spam_root, then run it for real
 `, cfgPath, cfgDir)
 	return nil

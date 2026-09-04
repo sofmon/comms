@@ -10,9 +10,9 @@ import (
 	"testing"
 	"time"
 
-	"save/internal/config"
-	"save/internal/paths"
-	"save/internal/state"
+	"comms/internal/config"
+	"comms/internal/paths"
+	"comms/internal/state"
 )
 
 // twoTreeArchive lays out both trees: a note in the archive, a note filed
@@ -89,7 +89,7 @@ func TestVerifyAuditsBothTrees(t *testing.T) {
 	}
 	for _, want := range []string{
 		"note recorded in the spam tree is in the archive tree: 2026/08/07/120000_gmail-work_halfway_cccccccc.md",
-		"`save triage` reconciles it",
+		"`comms triage` reconciles it",
 		"note exists in both trees: 2026/08/07/130000_gmail-work_doubled_dddddddd.md",
 		"orphan file in the spam tree",
 		"140000_gmail-work_stray_eeeeeeee.md",

@@ -12,8 +12,8 @@ import (
 
 	jmap "git.sr.ht/~rockorager/go-jmap"
 
-	"save/internal/policy"
-	"save/internal/state"
+	"comms/internal/policy"
+	"comms/internal/state"
 )
 
 // Attachment-policy behaviour of the FastMail connector.
@@ -121,7 +121,7 @@ func processOne(t *testing.T, s *Source, fake *fakeAPI, id, blob, raw string) {
 
 // TestDeniedPartStillArchivesNoteAndBody: the message survives its refused
 // attachment, and the refusal is on the record with the fetch identity a
-// later `save refetch` needs.
+// later `comms refetch` needs.
 func TestDeniedPartStillArchivesNoteAndBody(t *testing.T) {
 	s, db, root := newTestSource(t)
 	s.freeSpace = func(string) int64 { return 0 } // unknown: floor disabled

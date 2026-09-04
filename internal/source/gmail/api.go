@@ -8,11 +8,11 @@ import (
 	gmailv1 "google.golang.org/api/gmail/v1"
 	"google.golang.org/api/option"
 
-	"save/internal/archive"
-	"save/internal/config"
-	"save/internal/ratelimit"
-	"save/internal/source"
-	"save/internal/state"
+	"comms/internal/archive"
+	"comms/internal/config"
+	"comms/internal/ratelimit"
+	"comms/internal/source"
+	"comms/internal/state"
 
 	"golang.org/x/oauth2"
 )

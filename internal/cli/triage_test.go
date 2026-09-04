@@ -8,10 +8,10 @@ import (
 	"testing"
 	"time"
 
-	"save/internal/config"
-	"save/internal/paths"
-	"save/internal/state"
-	"save/internal/triage"
+	"comms/internal/config"
+	"comms/internal/paths"
+	"comms/internal/state"
+	"comms/internal/triage"
 )
 
 // triageNote renders a v2 email note's bytes for the given identity.
@@ -212,7 +212,7 @@ func TestTriageExplain(t *testing.T) {
 	}
 }
 
-// TestInitWritesTriageRules: `save init` ships the starter rules beside the
+// TestInitWritesTriageRules: `comms init` ships the starter rules beside the
 // config, 0600, and leaves an existing file alone.
 func TestInitWritesTriageRules(t *testing.T) {
 	cfgDir, stateHome := t.TempDir(), t.TempDir()
@@ -234,7 +234,7 @@ func TestInitWritesTriageRules(t *testing.T) {
 	if _, err := triage.LoadRules(rulesPath); err != nil {
 		t.Errorf("the written rules do not load: %v", err)
 	}
-	if !strings.Contains(out.String(), "wrote starter rules") || !strings.Contains(out.String(), "save triage --dry-run") {
+	if !strings.Contains(out.String(), "wrote starter rules") || !strings.Contains(out.String(), "comms triage --dry-run") {
 		t.Errorf("init output:\n%s", out.String())
 	}
 	// Second run: untouched.

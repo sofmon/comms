@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"save/internal/config"
-	"save/internal/state"
+	"comms/internal/config"
+	"comms/internal/state"
 )
 
 func statAt(t *testing.T, root, rel string) bool {
@@ -241,7 +241,7 @@ func TestUntriage(t *testing.T) {
 	if err := runTriage(&out, triageOpts{}); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(out.String(), "1 note(s) placed by `save untriage` are left alone") || !statAt(t, root, rels[0]) {
+	if !strings.Contains(out.String(), "1 note(s) placed by `comms untriage` are left alone") || !statAt(t, root, rels[0]) {
 		t.Errorf("a later pass re-filed a note the operator moved back:\n%s", out.String())
 	}
 	// Until the operator asks for exactly that.

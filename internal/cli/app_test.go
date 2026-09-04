@@ -14,10 +14,10 @@ import (
 
 	"golang.org/x/oauth2"
 
-	"save/internal/archive"
-	"save/internal/config"
-	"save/internal/paths"
-	"save/internal/state"
+	"comms/internal/archive"
+	"comms/internal/config"
+	"comms/internal/paths"
+	"comms/internal/state"
 )
 
 // writeFile writes content with 0600, creating the parent directory (0700).
@@ -74,20 +74,20 @@ account = "you@fastmail.com"
 }
 
 // setTestEnv points config and state resolution at temp dirs and neutralizes
-// the SAVE_* overrides that could leak in from the invoking environment,
+// the COMMS_* overrides that could leak in from the invoking environment,
 // including the per-label variants the test configs would pick up.
 func setTestEnv(t *testing.T, cfgDir, stateHome string) {
 	t.Helper()
-	t.Setenv("SAVE_CONFIG_DIR", cfgDir)
+	t.Setenv("COMMS_CONFIG_DIR", cfgDir)
 	t.Setenv("XDG_STATE_HOME", stateHome)
-	t.Setenv("SAVE_ARCHIVE_ROOT", "")
-	t.Setenv("SAVE_GOOGLE_CLIENT_FILE", "")
-	t.Setenv("SAVE_GOOGLE_TOKEN_FILE", "")
-	t.Setenv("SAVE_FASTMAIL_TOKEN", "")
+	t.Setenv("COMMS_ARCHIVE_ROOT", "")
+	t.Setenv("COMMS_GOOGLE_CLIENT_FILE", "")
+	t.Setenv("COMMS_GOOGLE_TOKEN_FILE", "")
+	t.Setenv("COMMS_FASTMAIL_TOKEN", "")
 	for _, label := range []string{"WORK", "PERSONAL", "FM"} {
-		t.Setenv("SAVE_GOOGLE_CLIENT_FILE_"+label, "")
-		t.Setenv("SAVE_GOOGLE_TOKEN_FILE_"+label, "")
-		t.Setenv("SAVE_FASTMAIL_TOKEN_"+label, "")
+		t.Setenv("COMMS_GOOGLE_CLIENT_FILE_"+label, "")
+		t.Setenv("COMMS_GOOGLE_TOKEN_FILE_"+label, "")
+		t.Setenv("COMMS_FASTMAIL_TOKEN_"+label, "")
 	}
 }
 
@@ -303,7 +303,7 @@ func TestResolveInstances(t *testing.T) {
 // TestResolveInstancesKindWithNoAccounts keeps the "valid kind, nothing
 // configured" case distinct from a typo.
 func TestResolveInstancesKindWithNoAccounts(t *testing.T) {
-	cfg := loadTestConfig(t, `archive_root = "/tmp/save-test"
+	cfg := loadTestConfig(t, `archive_root = "/tmp/comms-test"
 timezone = "UTC"
 
 [[google]]
@@ -326,7 +326,7 @@ gmail   = true
 // "gmail". A selector that is then both a kind and a label must be refused
 // rather than silently interpreted one way.
 func TestResolveInstancesAmbiguousSelector(t *testing.T) {
-	cfg := loadTestConfig(t, `archive_root = "/tmp/save-test"
+	cfg := loadTestConfig(t, `archive_root = "/tmp/comms-test"
 timezone = "UTC"
 
 [[google]]
@@ -363,7 +363,7 @@ func TestBuildSourcesTwoAccounts(t *testing.T) {
 	writeFile(t, filepath.Join(cfgDir, "config.toml"), twoAccountConfig(root, personalClient))
 	// The FastMail token comes from the per-label variable, so no token file
 	// has to exist.
-	t.Setenv("SAVE_FASTMAIL_TOKEN_FM", "fm-token")
+	t.Setenv("COMMS_FASTMAIL_TOKEN_FM", "fm-token")
 
 	googleScopeSet := []string{
 		"https://www.googleapis.com/auth/gmail.readonly",
@@ -436,7 +436,7 @@ func TestBuildSourcesReportsAccountOnMissingCredentials(t *testing.T) {
 	setTestEnv(t, cfgDir, stateHome)
 	personalClient := filepath.Join(cfgDir, "google-client-personal.json")
 	writeFile(t, filepath.Join(cfgDir, "config.toml"), twoAccountConfig(root, personalClient))
-	t.Setenv("SAVE_FASTMAIL_TOKEN_FM", "fm-token")
+	t.Setenv("COMMS_FASTMAIL_TOKEN_FM", "fm-token")
 	// Only work is authorized; personal has no client file at all.
 	writeGoogleCreds(t, filepath.Join(cfgDir, "google-client.json"),
 		filepath.Join(cfgDir, "google-token-work.json"),

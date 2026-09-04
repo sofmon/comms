@@ -9,7 +9,7 @@ import (
 	"slices"
 	"time"
 
-	"save/internal/naming"
+	"comms/internal/naming"
 )
 
 // Every chat table is keyed by the INSTANCE the rows were fetched with (the

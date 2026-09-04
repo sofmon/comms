@@ -22,7 +22,7 @@ const (
 
 	// DispositionSpam: noise triage moved the note (and its .d/ attachment
 	// directory) to the same rel path under spam_root. Nothing is deleted; the
-	// move is reversed by `save untriage`.
+	// move is reversed by `comms untriage`.
 	DispositionSpam Disposition = "spam"
 )
 
@@ -146,7 +146,7 @@ func (d *DB) GetMessage(source, stableID string) (m Message, ok bool, err error)
 // MessagesByRelPath returns every row whose rel_path is rel. A rel path
 // embeds the owning instance's tag and a hash over its instance id, so it
 // identifies at most one message in practice; the slice shape is honest
-// about the schema, which does not enforce that. It is how `save untriage`
+// about the schema, which does not enforce that. It is how `comms untriage`
 // turns a path the user typed back into a message.
 func (d *DB) MessagesByRelPath(rel string) ([]Message, error) {
 	rows, err := d.sql.Query(`SELECT `+messageColumns+` FROM messages WHERE rel_path = ? ORDER BY source, stable_id`, rel)
@@ -164,7 +164,7 @@ func (d *DB) MessagesByRelPath(rel string) ([]Message, error) {
 // MessagesByStableID returns every row with the given stable id, across
 // instances: a Gmail message id is unique only within one mailbox, so the
 // caller decides what to do with more than one hit. It is how
-// `save untriage <id>` finds a note without a path.
+// `comms untriage <id>` finds a note without a path.
 func (d *DB) MessagesByStableID(stableID string) ([]Message, error) {
 	rows, err := d.sql.Query(`SELECT `+messageColumns+` FROM messages WHERE stable_id = ? ORDER BY source`, stableID)
 	if err != nil {
@@ -267,7 +267,7 @@ type MessageCount struct {
 	Deleted int64 // tombstoned subset of Total
 }
 
-// MessageCounts returns per-instance archive totals for `save status`, keyed
+// MessageCounts returns per-instance archive totals for `comms status`, keyed
 // by instance id.
 func (d *DB) MessageCounts() (map[string]MessageCount, error) {
 	rows, err := d.sql.Query(`

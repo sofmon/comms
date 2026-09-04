@@ -8,10 +8,10 @@ import (
 	"testing"
 	"time"
 
-	"save/internal/archive"
-	"save/internal/config"
-	"save/internal/policy"
-	"save/internal/state"
+	"comms/internal/archive"
+	"comms/internal/config"
+	"comms/internal/policy"
+	"comms/internal/state"
 )
 
 // --- fixtures ---------------------------------------------------------------

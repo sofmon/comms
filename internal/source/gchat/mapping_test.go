@@ -8,9 +8,9 @@ import (
 
 	chat "google.golang.org/api/chat/v1"
 
-	"save/internal/archive"
-	"save/internal/naming"
-	"save/internal/state"
+	"comms/internal/archive"
+	"comms/internal/naming"
+	"comms/internal/state"
 )
 
 func mustZone(t *testing.T, name string) *time.Location {

@@ -16,17 +16,17 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"save/internal/archive"
-	"save/internal/config"
-	"save/internal/googleauth"
-	"save/internal/paths"
-	"save/internal/policy"
-	"save/internal/ratelimit"
-	"save/internal/source/fastmail"
-	"save/internal/source/gchat"
-	"save/internal/source/gmail"
-	"save/internal/state"
-	"save/internal/triage"
+	"comms/internal/archive"
+	"comms/internal/config"
+	"comms/internal/googleauth"
+	"comms/internal/paths"
+	"comms/internal/policy"
+	"comms/internal/ratelimit"
+	"comms/internal/source/fastmail"
+	"comms/internal/source/gchat"
+	"comms/internal/source/gmail"
+	"comms/internal/state"
+	"comms/internal/triage"
 )
 
 const checkTimeout = 30 * time.Second
@@ -87,7 +87,7 @@ func runDoctorWith(out io.Writer, env cloudEnv) error {
 	cfgPath := config.DefaultPath()
 	cfg, err := config.Load(cfgPath)
 	if err != nil {
-		d.bad("Run `save init`, then edit the skeleton it writes.", "config: %v", err)
+		d.bad("Run `comms init`, then edit the skeleton it writes.", "config: %v", err)
 		return fmt.Errorf("doctor found %d problem(s)", d.problems)
 	}
 	d.ok("config %s loads and validates", cfgPath)
@@ -97,7 +97,7 @@ func runDoctorWith(out io.Writer, env cloudEnv) error {
 		info, err := os.Stat(dir)
 		switch {
 		case errors.Is(err, fs.ErrNotExist):
-			d.bad("Run `save init` to create it with the right permissions.", "directory %s does not exist", dir)
+			d.bad("Run `comms init` to create it with the right permissions.", "directory %s does not exist", dir)
 		case err != nil:
 			d.bad("", "directory %s: %v", dir, err)
 		case !info.IsDir():
@@ -118,7 +118,7 @@ func runDoctorWith(out io.Writer, env cloudEnv) error {
 	} else {
 		dbPath := stateDBPath()
 		if _, err := os.Stat(dbPath); errors.Is(err, fs.ErrNotExist) {
-			d.info("no state database yet — the first `save sync` will pin timezone %q", zone)
+			d.info("no state database yet — the first `comms sync` will pin timezone %q", zone)
 		} else if ro, roErr := openRO(dbPath); roErr != nil {
 			d.bad("", "state database: %v", roErr)
 		} else {
@@ -182,7 +182,7 @@ func runDoctorWith(out io.Writer, env cloudEnv) error {
 // This is not editorial caution, it is a verified fact: XProtect's signature
 // set — all 94 signatures on this machine — gates on app bundles, installers
 // and executables. It has ZERO signatures for pdf, OOXML, zip or images, so
-// for every single type on save's allowlist the tag triggers no scan at all.
+// for every single type on comms's allowlist the tag triggers no scan at all.
 // Calling it "virus scanning" anywhere in this program would be a lie that a
 // user could reasonably act on.
 const quarantineScope = "What the tag actually does: macOS shows a consent prompt the first time you open\n" +
@@ -226,7 +226,7 @@ func (d *doctorReport) checkAttachmentPolicy(cfg *config.Config) {
 		d.ok("on_mismatch = %q: extension/content disagreements are refused and recorded", set.OnMismatch)
 	}
 	if len(set.ScanCommand) == 0 {
-		d.info("no scan_command configured — save runs no content scanner of its own")
+		d.info("no scan_command configured — comms runs no content scanner of its own")
 	} else {
 		d.ok("scan_command %v, scan_action %q (exit 0 clean, 1 flagged, anything else an error and never treated as clean)",
 			set.ScanCommand, set.ScanAction)
@@ -252,10 +252,10 @@ func (d *doctorReport) checkTriage(cfg *config.Config) {
 	rules, err := triage.LoadRules(tr.RulesFilePath)
 	switch {
 	case err != nil:
-		d.bad("Fix the rule and re-run; `save triage --dry-run` shows what the rules would do.", "%v", err)
+		d.bad("Fix the rule and re-run; `comms triage --dry-run` shows what the rules would do.", "%v", err)
 	case len(rules.Keep)+len(rules.Noise) == 0:
 		if _, statErr := os.Stat(tr.RulesFilePath); errors.Is(statErr, fs.ErrNotExist) {
-			d.info("no rules file at %s — `save init` writes a starter; until then only the protect and header layers decide", tr.RulesFilePath)
+			d.info("no rules file at %s — `comms init` writes a starter; until then only the protect and header layers decide", tr.RulesFilePath)
 		} else {
 			d.info("rules file %s holds no rules — only the protect and header layers decide", tr.RulesFilePath)
 		}
@@ -270,7 +270,7 @@ func (d *doctorReport) checkTriage(cfg *config.Config) {
 		d.info("header heuristics off (triage.header_heuristics = false)")
 	}
 	if tr.AfterSync {
-		d.info("after_sync = true: layers 0-2 run after every successful mail sync, in `save sync` and in the daemon")
+		d.info("after_sync = true: layers 0-2 run after every successful mail sync, in `comms sync` and in the daemon")
 	}
 	if !tr.LLM.Enabled {
 		d.info("model layer off (triage.llm.enabled = false) — undecided notes stay where they are")
@@ -316,13 +316,13 @@ func (d *doctorReport) checkPolicyDigest(digest string) {
 	case err != nil:
 		d.bad("", "state database: %v", err)
 	case !has:
-		d.info("policy digest %s — not recorded yet; the next `save sync` records it", digest)
+		d.info("policy digest %s — not recorded yet; the next `comms sync` records it", digest)
 	case recorded == digest:
 		d.ok("policy digest %s matches the digest this archive was reconsidered under", digest)
 	default:
 		d.warn("policy digest %s differs from the recorded %s — attachments refused under the old policy may now be storable.%s",
 			digest, recorded,
-			continued("\nNothing is re-fetched automatically. Run `save status` for the count, then `save refetch --dry-run`."))
+			continued("\nNothing is re-fetched automatically. Run `comms status` for the count, then `comms refetch --dry-run`."))
 	}
 }
 
@@ -384,14 +384,14 @@ func (d *doctorReport) checkGoogleAccount(cfg *config.Config, acct config.Google
 	scopes := googleScopes(acct)
 	switch missing, derr := googleauth.ScopeDrift(acct.TokenFilePath, scopes); {
 	case errors.Is(derr, googleauth.ErrNeedsAuth):
-		d.bad(fmt.Sprintf("Run: save auth google %s", acct.Label),
+		d.bad(fmt.Sprintf("Run: comms auth google %s", acct.Label),
 			"token %s: not authorized yet (%v)", acct.TokenFilePath, derr)
 		return
 	case derr != nil:
 		d.bad("", "token %s: %v", acct.TokenFilePath, derr)
 		return
 	case len(missing) > 0:
-		d.bad(fmt.Sprintf("Re-run `save auth google %s` and approve every permission.", acct.Label),
+		d.bad(fmt.Sprintf("Re-run `comms auth google %s` and approve every permission.", acct.Label),
 			"token is missing scopes the config needs: %v", missing)
 		return
 	}
@@ -406,7 +406,7 @@ func (d *doctorReport) checkGoogleAccount(cfg *config.Config, acct config.Google
 	defer cancel()
 	ts, err := googleauth.TokenSource(ctx, acct.ClientFilePath, acct.TokenFilePath, scopes)
 	if err != nil {
-		d.bad(fmt.Sprintf("Run: save auth google %s", acct.Label), "token source: %v", err)
+		d.bad(fmt.Sprintf("Run: comms auth google %s", acct.Label), "token source: %v", err)
 		return
 	}
 	if acct.Gmail {
@@ -455,7 +455,7 @@ func (d *doctorReport) checkFastMailAccount(acct config.FastMailAccount, writer 
 
 	switch {
 	case acct.Token != "":
-		d.ok("token supplied via $SAVE_FASTMAIL_TOKEN_%s", config.EnvSuffix(acct.Label))
+		d.ok("token supplied via $COMMS_FASTMAIL_TOKEN_%s", config.EnvSuffix(acct.Label))
 	default:
 		ok, detail := credFileState(acct.TokenFilePath)
 		if !ok {

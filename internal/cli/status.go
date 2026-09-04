@@ -11,9 +11,9 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"save/internal/config"
-	"save/internal/policy"
-	"save/internal/state"
+	"comms/internal/config"
+	"comms/internal/policy"
+	"comms/internal/state"
 )
 
 func newStatusCmd() *cobra.Command {
@@ -129,7 +129,7 @@ func runStatus(out io.Writer, jsonOut bool) error {
 			fmt.Fprintln(out, "{}")
 			return nil
 		}
-		fmt.Fprintf(out, "no state database at %s yet — run `save sync` first\n", dbPath)
+		fmt.Fprintf(out, "no state database at %s yet — run `comms sync` first\n", dbPath)
 		return nil
 	}
 
@@ -306,7 +306,7 @@ func buildStatus(cfg *config.Config, dbPath string) (*statusReport, error) {
 // one the archive was last reconsidered under, and re-decides the unresolved
 // backlog against it. The re-decision is entirely offline — every skip row
 // carries the size, the extension and the sniffed type its original verdict
-// used — so `save status` stays a read-only, no-network command.
+// used — so `comms status` stays a read-only, no-network command.
 func buildPolicyStatus(cfg *config.Config, sdb *state.DB) (*policyStatus, error) {
 	pol, err := cfg.Policy()
 	if err != nil {
@@ -384,7 +384,7 @@ func printStatus(out io.Writer, rep *statusReport) {
 			fmt.Fprintf(out, "  failing:      %d item(s) below the skip threshold, still retried\n", ss.FailingItems)
 		}
 		if len(ss.SkippedItems) > 0 {
-			fmt.Fprintf(out, "  skipped:      %d poison item(s) — re-drive with `save sync --retry-failed`\n", len(ss.SkippedItems))
+			fmt.Fprintf(out, "  skipped:      %d poison item(s) — re-drive with `comms sync --retry-failed`\n", len(ss.SkippedItems))
 			for _, f := range ss.SkippedItems {
 				fmt.Fprintf(out, "    %s (attempts %d): %s\n", f.ID, f.Attempts, truncate(f.LastError, 80))
 			}
@@ -419,7 +419,7 @@ func printStatus(out io.Writer, rep *statusReport) {
 }
 
 // printPolicyStatus prints the attachment-policy header. It never says "run
-// save refetch" without first saying how much would be fetched: that number
+// comms refetch" without first saying how much would be fetched: that number
 // is the whole point of refusing to do it automatically.
 func printPolicyStatus(out io.Writer, ps *policyStatus) {
 	if ps == nil {
@@ -437,7 +437,7 @@ func printPolicyStatus(out io.Writer, ps *policyStatus) {
 	fmt.Fprintf(out, "              %d unresolved skip(s); %d (%s) would be accepted by the current policy\n",
 		ps.Unresolved, ps.NowAccepted, byteSize(ps.NowAcceptedBytes))
 	if ps.NowAccepted > 0 {
-		fmt.Fprintf(out, "              nothing is ever re-fetched automatically — run `save refetch --dry-run` to see the plan\n")
+		fmt.Fprintf(out, "              nothing is ever re-fetched automatically — run `comms refetch --dry-run` to see the plan\n")
 	}
 }
 

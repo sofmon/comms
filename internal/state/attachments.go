@@ -158,7 +158,7 @@ func (d *DB) MarkAttachmentRetry(source, stableID, partKey, lastErr string, atte
 }
 
 // MarkAttachmentFailed records a permanent failure ('failed' status, never
-// retried automatically; surfaced by `save status`).
+// retried automatically; surfaced by `comms status`).
 func (d *DB) MarkAttachmentFailed(source, stableID, partKey, lastErr string, attempts int) error {
 	return d.finishAttachment(source, stableID, partKey, `
 		UPDATE attachments
@@ -206,7 +206,7 @@ type AttachmentCounts struct {
 	Failed  int64
 }
 
-// AttachmentCounts returns per-instance status totals for `save status`,
+// AttachmentCounts returns per-instance status totals for `comms status`,
 // keyed by instance id.
 func (d *DB) AttachmentCounts() (map[string]AttachmentCounts, error) {
 	rows, err := d.sql.Query(`

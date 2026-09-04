@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"save/internal/policy"
-	"save/internal/state"
+	"comms/internal/policy"
+	"comms/internal/state"
 )
 
 var (
@@ -449,7 +449,7 @@ func TestAttachmentPolicyDigestRoundTrip(t *testing.T) {
 		t.Fatalf("AttachmentPolicyDigest = %q, %v, %v; want %q, true, nil", got, ok, err, defaultDigest)
 	}
 
-	// Widening the policy changes the digest, which is the signal `save
+	// Widening the policy changes the digest, which is the signal `comms
 	// status` uses to offer a refetch.
 	wide := widenedDigest(t)
 	if wide == defaultDigest {

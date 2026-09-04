@@ -1,4 +1,4 @@
-// Package policy is save's single attachment storage decision engine.
+// Package policy is comms's single attachment storage decision engine.
 //
 // The rule, in one sentence: an attachment is stored if and only if its
 // NORMALIZED FINAL EXTENSION is on the allowlist AND the CONTENT SNIFFED from
@@ -8,7 +8,7 @@
 // and never silently dropped: every refusal comes back as a Verdict carrying
 // a machine-readable Reason plus the sniffed type, which the callers record
 // in the note's `skipped_attachments:` list and in the state DB so it can be
-// re-fetched later via `save refetch`.
+// re-fetched later via `comms refetch`.
 //
 // The package is deliberately pure and dependency-light — mimetype, x/text
 // and the standard library — so every caller (email pipeline, Chat connector,
@@ -26,7 +26,7 @@
 //
 // # The one never-decompress carve-out
 //
-// save never decompresses an attachment. There is exactly ONE exception,
+// comms never decompresses an attachment. There is exactly ONE exception,
 // implemented in zipdir.go and used only for macro detection: the zip CENTRAL
 // DIRECTORY entry NAMES of an OOXML file are read (never inflated) to catch
 // word/vbaProject.bin, xl/vbaProject.bin, ppt/vbaProject.bin or a top-level
@@ -69,7 +69,7 @@ const (
 	// the effective extension allowlist (including anything the operator
 	// removed with deny_extensions, and container formats such as 7z/rar/tar
 	// that are off the list by default). Fix by adding it to
-	// attachments.allow_extensions and running `save refetch`.
+	// attachments.allow_extensions and running `comms refetch`.
 	ReasonNotAllowlistedExtension = "not_allowlisted_extension"
 
 	// ReasonNotAllowlistedContent: the part carried NO usable filename
@@ -126,7 +126,7 @@ const (
 )
 
 // Reasons returns every valid non-empty Reason, in a stable order. Useful for
-// schema CHECK constraints and for `save status` breakdowns.
+// schema CHECK constraints and for `comms status` breakdowns.
 func Reasons() []string {
 	return []string{
 		ReasonNotAllowlistedExtension,
@@ -150,7 +150,7 @@ func ValidReason(r string) bool { return r == ReasonNone || slices.Contains(Reas
 // Transient reports whether a Reason describes a passing condition of the
 // machine or the run rather than a property of the attachment: raising a cap,
 // freeing disk, or simply running again can change the answer without any
-// policy change. `save refetch` re-tries these regardless of the digest.
+// policy change. `comms refetch` re-tries these regardless of the digest.
 func Transient(r string) bool {
 	switch r {
 	case ReasonOverRunBudget, ReasonFreeSpaceFloor:
@@ -179,9 +179,9 @@ const (
 )
 
 // AnyType is the sentinel permitted-type set produced by an allow_extensions
-// entry that names an extension save has no built-in content table for. The
+// entry that names an extension comms has no built-in content table for. The
 // extension half of the rule still applies; the content half cannot, because
-// save does not know what that format's bytes look like.
+// comms does not know what that format's bytes look like.
 const AnyType = "*"
 
 // Settings is the effective, config-independent input to New. Every byte cap
@@ -301,7 +301,7 @@ func New(s Settings) (*Policy, error) {
 			return nil, fmt.Errorf("allow_extensions: %w", err)
 		}
 		if why, hard := HardDenied(ext); hard {
-			return nil, fmt.Errorf("allow_extensions: %q cannot be allowed: %s. save will not store it under any configuration; if you need those bytes, fetch the message from the source by hand", ext, why)
+			return nil, fmt.Errorf("allow_extensions: %q cannot be allowed: %s. comms will not store it under any configuration; if you need those bytes, fetch the message from the source by hand", ext, why)
 		}
 		// A flag-gated extension must be turned on by its flag, so the
 		// effective allowlist (and therefore the digest) stays truthful.
@@ -352,7 +352,7 @@ func (p *Policy) Settings() Settings { return p.set }
 //
 // Store it in the state DB's meta table and on every skip row. When the
 // computed digest differs from the stored one, unresolved skips may now be
-// storable; `save status` reports the count and `save refetch` — never an
+// storable; `comms status` reports the count and `comms refetch` — never an
 // automatic sync — actually fetches them.
 //
 // attachments.quarantine is deliberately NOT part of the digest: it changes
@@ -360,7 +360,7 @@ func (p *Policy) Settings() Settings { return p.set }
 func (p *Policy) PolicyDigest() string { return p.digest }
 
 // Canonical returns the exact newline-separated text PolicyDigest hashes.
-// Exported for diagnostics (`save doctor`) and for tests that need to see
+// Exported for diagnostics (`comms doctor`) and for tests that need to see
 // what changed.
 func (p *Policy) Canonical() string { return p.canonical }
 
@@ -495,7 +495,7 @@ func (v Verdict) Warned() bool { return v.Store && v.Reason != ReasonNone }
 //
 // Policy comes before size on purpose: a 200 MB .exe must report
 // not_allowlisted_extension, so that raising max_size can never turn its
-// recorded skip into something `save refetch` would fetch.
+// recorded skip into something `comms refetch` would fetch.
 //
 // Tolerated non-mismatches, so the rule is not noisy — none of these is
 // reported as a mismatch:

@@ -5,9 +5,9 @@ import (
 	"strings"
 	"testing"
 
-	"save/internal/paths"
-	"save/internal/policy"
-	"save/internal/state"
+	"comms/internal/paths"
+	"comms/internal/policy"
+	"comms/internal/state"
 )
 
 // doctorText runs doctor over a config and returns its output. Credentials
@@ -52,7 +52,7 @@ func TestDoctorReportsTheEffectiveAttachmentPolicy(t *testing.T) {
 
 // TestDoctorQuarantineClaimIsHonest is a guard against the single most
 // tempting lie in this program. XProtect has ZERO signatures for any type on
-// save's allowlist — verified, all 94 gate on app bundles, installers and
+// comms's allowlist — verified, all 94 gate on app bundles, installers and
 // executables — so the quarantine tag scans nothing. doctor must describe the
 // consent prompt and Protected View, and must never imply antivirus.
 func TestDoctorQuarantineClaimIsHonest(t *testing.T) {
@@ -113,7 +113,7 @@ func TestDoctorReportsPolicyOverridesAndDigestDrift(t *testing.T) {
 		"is STORED",
 		"differs from the recorded " + policy.Default().PolicyDigest(),
 		"Nothing is re-fetched automatically",
-		"save refetch --dry-run",
+		"comms refetch --dry-run",
 	} {
 		if !strings.Contains(text, want) {
 			t.Errorf("doctor does not report %q:\n%s", want, text)

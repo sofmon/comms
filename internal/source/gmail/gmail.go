@@ -33,15 +33,15 @@ import (
 	"github.com/jhillyerd/enmime/v2"
 	gmailv1 "google.golang.org/api/gmail/v1"
 
-	"save/internal/archive"
-	"save/internal/config"
-	"save/internal/emailpipe"
-	"save/internal/naming"
-	"save/internal/policy"
-	"save/internal/ratelimit"
-	"save/internal/retry"
-	"save/internal/source"
-	"save/internal/state"
+	"comms/internal/archive"
+	"comms/internal/config"
+	"comms/internal/emailpipe"
+	"comms/internal/naming"
+	"comms/internal/policy"
+	"comms/internal/ratelimit"
+	"comms/internal/retry"
+	"comms/internal/source"
+	"comms/internal/state"
 )
 
 // Cursor kinds under (source=<instance id>, scope="").
@@ -489,7 +489,7 @@ func (s *Source) processQueued(ctx context.Context, id string, labels map[string
 		return s.db.MarkBackfillDone(s.id, id)
 	}
 	// Item failure, already in the ledger. At the skip threshold the item
-	// leaves the queue (surfaced by `save status`, never wedging the
+	// leaves the queue (surfaced by `comms status`, never wedging the
 	// drain); below it, it stays pending for the next run.
 	nowSkipped, err := s.db.IsSkipped(s.id, id)
 	if err != nil {
@@ -699,7 +699,7 @@ func (s *Source) archiveOne(ctx context.Context, id string, labels map[string]st
 	// transport ceiling installed in New only bounds the allocation. This is
 	// an item failure, not an attachment policy skip: there is no note to
 	// record a skip against, because the message cannot be parsed at all
-	// without buffering it. The ledger keeps it visible in `save status` and
+	// without buffering it. The ledger keeps it visible in `comms status` and
 	// the poison protocol stops it wedging a cursor.
 	if limit := s.pol.Settings().MaxMessageBytes; limit > 0 && int64(len(raw)) > limit {
 		return s.recordItemFailure(id, fmt.Errorf(
@@ -774,7 +774,7 @@ func (s *Source) archiveOne(ctx context.Context, id string, labels map[string]st
 }
 
 // recordSkips persists every attachment the policy refused, so the note and
-// the state DB tell the same story and `save refetch` can find the bytes
+// the state DB tell the same story and `comms refetch` can find the bytes
 // again after a policy widening.
 //
 // A policy skip is NOT an item failure: it never touches the failures ledger

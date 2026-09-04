@@ -10,9 +10,9 @@ import (
 
 	chat "google.golang.org/api/chat/v1"
 
-	"save/internal/naming"
-	"save/internal/policy"
-	"save/internal/state"
+	"comms/internal/naming"
+	"comms/internal/policy"
+	"comms/internal/state"
 )
 
 // Attachment-policy behaviour of the Google Chat connector.
@@ -253,7 +253,7 @@ func TestDownloadedChatAttachmentRefusedOnContent(t *testing.T) {
 		t.Fatalf("attachment rows = %+v, want one terminal row", atts)
 	}
 	if !strings.Contains(atts[0].LastError, "attachment policy") {
-		t.Errorf("last_error = %q, should name the policy so `save status` does not read as a network fault", atts[0].LastError)
+		t.Errorf("last_error = %q, should name the policy so `comms status` does not read as a network fault", atts[0].LastError)
 	}
 
 	// The day file explains it, and says the bytes were discarded — not that

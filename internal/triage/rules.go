@@ -222,15 +222,15 @@ func WriteDefaultRules(path string) error {
 	return nil
 }
 
-// DefaultRulesTOML is the triage.toml `save init` writes: a starting point
+// DefaultRulesTOML is the triage.toml `comms init` writes: a starting point
 // that files the mail nobody reads and keeps the mail that costs money or
 // access to lose. Every rule can be edited or deleted; the protect layer
 // (see the [triage] block in config.toml) still stands above all of them.
-const DefaultRulesTOML = `# save — noise triage rules.
+const DefaultRulesTOML = `# comms — noise triage rules.
 #
-# ` + "`save triage`" + ` reads every archived email note and decides signal or noise.
+# ` + "`comms triage`" + ` reads every archived email note and decides signal or noise.
 # Noise is MOVED (never deleted) into spam_root at the same YYYY/MM/DD path;
-# ` + "`save untriage <path>`" + ` moves it back. Decisions run in layers and stop
+# ` + "`comms untriage <path>`" + ` moves it back. Decisions run in layers and stop
 # at the first decisive one:
 #
 #   0. protect   never noise: a note with a stored PDF/Office attachment, mail
@@ -247,8 +247,8 @@ const DefaultRulesTOML = `# save — noise triage rules.
 # exact match. Fields: from, to (also matches Cc), subject, list_id (the
 # List-Id header), labels (Gmail labels / mailbox names), account_label.
 #
-# Run ` + "`save triage --dry-run`" + ` after editing: it prints every move the rules
-# would make, file by file, and moves nothing. ` + "`save triage --explain <note>`" + `
+# Run ` + "`comms triage --dry-run`" + ` after editing: it prints every move the rules
+# would make, file by file, and moves nothing. ` + "`comms triage --explain <note>`" + `
 # shows which layer decided one note and why.
 
 # ---- keep: signal, however noisy it looks ---------------------------------

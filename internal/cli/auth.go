@@ -14,14 +14,14 @@ import (
 	"github.com/google/renameio/v2"
 	"github.com/spf13/cobra"
 
-	"save/internal/config"
-	"save/internal/googleauth"
-	"save/internal/paths"
-	"save/internal/source/fastmail"
-	"save/internal/state"
+	"comms/internal/config"
+	"comms/internal/googleauth"
+	"comms/internal/paths"
+	"comms/internal/source/fastmail"
+	"comms/internal/state"
 )
 
-// Setup walkthroughs, printed by auth failures and `save doctor`. Render
+// Setup walkthroughs, printed by auth failures and `comms doctor`. Render
 // them with googleSetup / fastmailSetup so the account's own paths, label
 // and env variable appear in the text.
 const googleSetupHintFmt = `Google Cloud Console setup for account %[1]q (%[2]s):
@@ -38,7 +38,7 @@ const googleSetupHintFmt = `Google Cloud Console setup for account %[1]q (%[2]s)
      from the Chat scopes.
   4. Credentials → Create credentials → OAuth client ID → type "Desktop app"
   5. Download the client JSON, save it as %[3]s, chmod 600 it
-  Then run: save auth google %[1]s`
+  Then run: comms auth google %[1]s`
 
 // googleSetup renders the walkthrough for one account.
 func googleSetup(acct config.GoogleAccount) string {
@@ -50,7 +50,7 @@ const fastmailSetupHintFmt = `FastMail token setup for account %[1]q (%[2]s):
   2. Type: JMAP; scope: read-only. The token is shown exactly once — paste it
      here right away. (API tokens are not available on Basic plans; there is
      no JMAP fallback for those.)
-  Then run: save auth fastmail %[1]s`
+  Then run: comms auth fastmail %[1]s`
 
 func fastmailSetup(acct config.FastMailAccount) string {
 	return fmt.Sprintf(fastmailSetupHintFmt, acct.Label, acct.Account)
@@ -59,13 +59,13 @@ func fastmailSetup(acct config.FastMailAccount) string {
 func newAuthCmd() *cobra.Command {
 	auth := &cobra.Command{
 		Use:   "auth",
-		Short: "Authorize save with one configured account",
+		Short: "Authorize comms with one configured account",
 	}
 	auth.AddCommand(newAuthGoogleCmd(), newAuthFastmailCmd())
 	return auth
 }
 
-// resolveAuthLabels picks which configured accounts an `save auth` run
+// resolveAuthLabels picks which configured accounts an `comms auth` run
 // applies to. block is the config block name ("google"/"fastmail"), labels
 // every configured label of that kind in config order, arg the optional
 // positional label, and all the --all switch (google only; pass hasAll=false
@@ -76,7 +76,7 @@ func resolveAuthLabels(block string, labels []string, arg string, all, hasAll bo
 	case len(labels) == 0:
 		return nil, fmt.Errorf("no [[%s]] account is configured in %s", block, config.DefaultPath())
 	case all && arg != "":
-		return nil, fmt.Errorf("pass either a label or --all to `save auth %s`, not both", block)
+		return nil, fmt.Errorf("pass either a label or --all to `comms auth %s`, not both", block)
 	case all:
 		return labels, nil
 	case arg != "":
@@ -94,7 +94,7 @@ func resolveAuthLabels(block string, labels []string, arg string, all, hasAll bo
 	if hasAll {
 		allHint = " or pass --all to do every one in turn"
 	}
-	return nil, fmt.Errorf("several [[%s]] accounts are configured — name the one to authorize (`save auth %s <label>`)%s; configured labels: %s",
+	return nil, fmt.Errorf("several [[%s]] accounts are configured — name the one to authorize (`comms auth %s <label>`)%s; configured labels: %s",
 		block, block, allHint, strings.Join(labels, ", "))
 }
 
@@ -196,7 +196,7 @@ func authorizeGoogle(ctx context.Context, out io.Writer, acct config.GoogleAccou
 		return derr
 	}
 	fmt.Fprintf(out, "Sign in as %s on the consent screen — signing in as a different\n"+
-		"account would archive the wrong mailbox under label %q (`save doctor` catches it later).\n",
+		"account would archive the wrong mailbox under label %q (`comms doctor` catches it later).\n",
 		acct.Account, acct.Label)
 
 	if err := googleauth.Authenticate(ctx, acct.ClientFilePath, acct.TokenFilePath, scopes); err != nil {
@@ -205,7 +205,7 @@ func authorizeGoogle(ctx context.Context, out io.Writer, acct config.GoogleAccou
 	// The consent screen lets users decline individual scopes; catch that
 	// now instead of failing on the first Chat call.
 	if missing, derr := googleauth.ScopeDrift(acct.TokenFilePath, scopes); derr == nil && len(missing) > 0 {
-		return fmt.Errorf("authorization completed but the grant is missing %v — did you uncheck a permission on the consent screen? Re-run `save auth google %s` and approve everything",
+		return fmt.Errorf("authorization completed but the grant is missing %v — did you uncheck a permission on the consent screen? Re-run `comms auth google %s` and approve everything",
 			missing, acct.Label)
 	}
 	fmt.Fprintf(out, "Google authorization for %s stored at %s (0600).\n", acct.Account, acct.TokenFilePath)
@@ -250,9 +250,9 @@ func runAuthFastmail(cmd *cobra.Command, arg string) error {
 	// golang.org/x/term is not among the pinned dependencies, so the prompt
 	// cannot disable echo; say so instead of pretending. The env variable is
 	// per label; the unsuffixed name works only with a single account.
-	envVar := "SAVE_FASTMAIL_TOKEN_" + config.EnvSuffix(acct.Label)
+	envVar := "COMMS_FASTMAIL_TOKEN_" + config.EnvSuffix(acct.Label)
 	if len(cfg.FastMail) == 1 {
-		envVar += " (or SAVE_FASTMAIL_TOKEN)"
+		envVar += " (or COMMS_FASTMAIL_TOKEN)"
 	}
 	fmt.Fprintln(out, "Note: input is NOT hidden here — paste in a private terminal, or export")
 	fmt.Fprintf(out, "%s instead if you prefer to keep it out of this prompt.\n", envVar)

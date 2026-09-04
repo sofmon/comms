@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"save/internal/naming"
-	"save/internal/state"
+	"comms/internal/naming"
+	"comms/internal/state"
 )
 
 // TestRootForFollowsTheDisposition pins the one place the two trees are told

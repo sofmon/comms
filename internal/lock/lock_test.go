@@ -20,7 +20,7 @@ func TestAcquireContention(t *testing.T) {
 	// process contends exactly like a second process would.
 	if _, err := Acquire(dir); err == nil {
 		t.Fatal("second Acquire should fail while the lock is held")
-	} else if !strings.Contains(err.Error(), "another save instance is running") {
+	} else if !strings.Contains(err.Error(), "another comms instance is running") {
 		t.Fatalf("contention error should say another instance is running, got: %v", err)
 	}
 

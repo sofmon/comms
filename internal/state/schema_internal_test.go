@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"save/internal/policy"
+	"comms/internal/policy"
 )
 
 // The schema's enum CHECKs are generated from policy.Reasons() and

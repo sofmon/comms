@@ -10,8 +10,8 @@ import (
 	"strings"
 	"time"
 
-	"save/internal/naming"
-	"save/internal/state"
+	"comms/internal/naming"
+	"comms/internal/state"
 )
 
 // chatFrontmatter is marshaled with yaml.v3 only — hostile space display
@@ -89,7 +89,7 @@ type ChatDay struct {
 	// is the owning message's resource name. Rows already resolved as
 	// "fetched" are ignored: the real attachment row renders the link
 	// instead. Everything else renders as a visible, honest non-entry —
-	// a chat blob save decided not to download must not simply vanish.
+	// a chat blob comms decided not to download must not simply vanish.
 	Skipped []state.SkippedAttachment
 
 	// Disposition words those entries. Chat refuses before downloading, so

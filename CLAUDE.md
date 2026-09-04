@@ -1,4 +1,4 @@
-# save — notes for Claude Code / contributors
+# comms — notes for Claude Code / contributors
 
 Single-binary Go archiver: Gmail + Google Chat (Workspace) + FastMail (JMAP) → one
 merged local Markdown tree. See `README.md` for usage; the full design spec and
@@ -42,7 +42,7 @@ go.mod.
    only item-specific errors enter the failures ledger (skip after 5); attachment-policy
    skips are never failures.
 5. Never drop silently: refused attachments are recorded in the note AND in
-   `skipped_attachments` with the policy digest; `save refetch` (explicit only)
+   `skipped_attachments` with the policy digest; `comms refetch` (explicit only)
    recovers them after a policy widening.
 6. `mimetype.SetLimit(0)` (policy package init) must stay — the 4 KB default window
    misdetects real docx/xlsx as zip and would silently skip them.
@@ -55,7 +55,7 @@ go.mod.
    `--materialize`; the state DB must stay outside any synced folder; the daemon is a
    user LaunchAgent, not a LaunchDaemon.
 10. Timezone is pinned (state meta + written back into config); mismatch refuses start.
-11. Noise triage is a POST-PASS (`internal/triage`, `save triage`): never call the
+11. Noise triage is a POST-PASS (`internal/triage`, `comms triage`): never call the
     classifier from a connector or the writer; sync archives everything first.
 12. The DB is the source of truth for a note's location: `messages.disposition`
     (`archive`|`spam`) says which root `rel_path` is relative to, and EVERY absolute path
@@ -70,7 +70,7 @@ go.mod.
 14. Undecided is never noise. Layers stop at the first decisive one (protect → headers →
     rules → llm); every outcome is a `triage_decisions` row; a model failure is undecided
     AND transient (not settled under the digest, retried next pass). The daemon never
-    calls the model unless `[triage.llm] in_daemon = true`. `save untriage` decisions
+    calls the model unless `[triage.llm] in_daemon = true`. `comms untriage` decisions
     (`disposition_rule = "manual"`) are never re-filed automatically.
 15. `render_version` in email frontmatter is a layout version: bump `archive.EmailRenderVersion`
     when the frontmatter shape changes; existing notes are never rewritten for it, and

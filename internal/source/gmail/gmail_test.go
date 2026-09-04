@@ -17,11 +17,11 @@ import (
 	gmailv1 "google.golang.org/api/gmail/v1"
 	"google.golang.org/api/googleapi"
 
-	"save/internal/archive"
-	"save/internal/config"
-	"save/internal/naming"
-	"save/internal/ratelimit"
-	"save/internal/state"
+	"comms/internal/archive"
+	"comms/internal/config"
+	"comms/internal/naming"
+	"comms/internal/ratelimit"
+	"comms/internal/state"
 )
 
 // fakeAPI implements api with pluggable functions and per-id fetch counts.

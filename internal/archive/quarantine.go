@@ -28,7 +28,7 @@ import (
 //     an archived attachment silently un-quarantines it, and an iCloud
 //     round trip degrades the value to its flags field alone.
 //
-// The extension-and-content allowlist in save/internal/policy is the real
+// The extension-and-content allowlist in comms/internal/policy is the real
 // boundary; this is a speed bump behind it, kept because it is nearly free.
 //
 // The zero value tags, matching the attachments.quarantine = true config
@@ -58,7 +58,7 @@ func (m QuarantineMode) enabled() bool { return m != QuarantineOff }
 // com.apple.metadata:kMDItemWhereFroms, which Finder shows as "Where from" in
 // Get Info and which survives the file being copied out of the archive.
 //
-// Apple's convention for that array is [origin, referrer]; save writes
+// Apple's convention for that array is [origin, referrer]; comms writes
 // [source instance id, message identity], which is the closest honest
 // analogue for mail. Both fields are optional: an Origin with neither set
 // writes no metadata at all.
@@ -108,7 +108,7 @@ const (
 const quarantineFlags = "0081"
 
 // quarantineAgent is the third field: the program that put the file there.
-const quarantineAgent = "save"
+const quarantineAgent = "comms"
 
 // quarantineValue builds the com.apple.quarantine string:
 // flags;hex-epoch;agent;UUID, four semicolon-separated fields, verified
@@ -117,7 +117,7 @@ const quarantineAgent = "save"
 // The UUID does not need to exist in the LaunchServices QuarantineEventsV2
 // database — files carrying unknown, and even empty, UUIDs are common on disk
 // and behave normally. Downstream treatment keys off the value and the file's
-// type, not off who wrote it, so a save-tagged file is treated exactly like a
+// type, not off who wrote it, so a comms-tagged file is treated exactly like a
 // browser-tagged one.
 func quarantineValue(t time.Time, id string) string {
 	return fmt.Sprintf("%s;%x;%s;%s", quarantineFlags, t.Unix(), quarantineAgent, id)

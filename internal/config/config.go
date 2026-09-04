@@ -1,5 +1,5 @@
-// Package config loads, validates, and writes save's config.toml, applies
-// SAVE_* environment overrides, and handles the timezone pinning protocol
+// Package config loads, validates, and writes comms's config.toml, applies
+// COMMS_* environment overrides, and handles the timezone pinning protocol
 // (resolve "local" to an IANA zone once, then rewrite it into the file so
 // the pin survives state-DB loss).
 //
@@ -23,8 +23,8 @@ import (
 
 	"github.com/BurntSushi/toml"
 
-	"save/internal/paths"
-	"save/internal/state"
+	"comms/internal/paths"
+	"comms/internal/state"
 )
 
 // Duration is a time.Duration that unmarshals from TOML duration strings
@@ -51,7 +51,7 @@ func (d Duration) Duration() time.Duration { return time.Duration(d) }
 
 // Config is the parsed, validated configuration. All TOML fields have
 // defaults; the resolved credential locations on each account are filled in
-// from ConfigDir and the SAVE_* environment.
+// from ConfigDir and the COMMS_* environment.
 type Config struct {
 	ArchiveRoot string `toml:"archive_root"`
 
@@ -145,14 +145,14 @@ func Default() *Config {
 }
 
 // Load reads path, layers it over the defaults, resolves every account's
-// credential locations (applying the SAVE_* overrides), expands ~ in
+// credential locations (applying the COMMS_* overrides), expands ~ in
 // archive_root, and validates. Unknown TOML keys are an error so typos
 // cannot silently disable options.
 func Load(path string) (*Config, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
-			return nil, fmt.Errorf("config file %s does not exist — run `save init` to create it", path)
+			return nil, fmt.Errorf("config file %s does not exist — run `comms init` to create it", path)
 		}
 		return nil, fmt.Errorf("read %s: %w", path, err)
 	}
@@ -171,7 +171,7 @@ func Load(path string) (*Config, error) {
 		}
 		return nil, fmt.Errorf("%s: unknown key(s): %s", path, strings.Join(keys, ", "))
 	}
-	if v := os.Getenv("SAVE_ARCHIVE_ROOT"); v != "" {
+	if v := os.Getenv("COMMS_ARCHIVE_ROOT"); v != "" {
 		cfg.ArchiveRoot = v
 	}
 	root, err := expandTilde(cfg.ArchiveRoot)
@@ -179,7 +179,7 @@ func Load(path string) (*Config, error) {
 		return nil, fmt.Errorf("%s: archive_root: %w", path, err)
 	}
 	cfg.ArchiveRoot = root
-	if v := os.Getenv("SAVE_SPAM_ROOT"); v != "" {
+	if v := os.Getenv("COMMS_SPAM_ROOT"); v != "" {
 		cfg.SpamRoot = v
 	}
 	if cfg.SpamRoot == "" {
@@ -262,12 +262,12 @@ identity (one OAuth consent) that can provide Gmail and/or Chat:
 
 Note the DOUBLE brackets: [[google]] and [[fastmail]] may be repeated once per
 account. Run %s in an empty config dir to see a full example`,
-		path, strings.Join(found, " / "), "`save init`")
+		path, strings.Join(found, " / "), "`comms init`")
 }
 
 // resolveCredentials fills in each account's credential paths: per-label
 // defaults under the config dir, the optional per-account client_file, then
-// the SAVE_* environment overrides.
+// the COMMS_* environment overrides.
 func (c *Config) resolveCredentials() error {
 	cfgDir := paths.ConfigDir()
 	var errs []error
@@ -286,10 +286,10 @@ func (c *Config) resolveCredentials() error {
 		}
 		// The token is always per-label: two identities can never share one.
 		token := filepath.Join(cfgDir, tokenBase("google-token", g.Label)+".json")
-		if v := envFor("SAVE_GOOGLE_CLIENT_FILE", g.Label, singleGoogle); v != "" {
+		if v := envFor("COMMS_GOOGLE_CLIENT_FILE", g.Label, singleGoogle); v != "" {
 			client = v
 		}
-		if v := envFor("SAVE_GOOGLE_TOKEN_FILE", g.Label, singleGoogle); v != "" {
+		if v := envFor("COMMS_GOOGLE_TOKEN_FILE", g.Label, singleGoogle); v != "" {
 			token = v
 		}
 		g.ClientFilePath, g.TokenFilePath = client, token
@@ -299,7 +299,7 @@ func (c *Config) resolveCredentials() error {
 	for i := range c.FastMail {
 		f := &c.FastMail[i]
 		f.TokenFilePath = filepath.Join(cfgDir, tokenBase("fastmail-token", f.Label))
-		f.Token = envFor("SAVE_FASTMAIL_TOKEN", f.Label, singleFastMail)
+		f.Token = envFor("COMMS_FASTMAIL_TOKEN", f.Label, singleFastMail)
 	}
 	return errors.Join(errs...)
 }
@@ -330,7 +330,7 @@ func envFor(base, label string, single bool) string {
 	return ""
 }
 
-// EnvSuffix renders a label the way the per-account SAVE_* variables spell
+// EnvSuffix renders a label the way the per-account COMMS_* variables spell
 // it: uppercased, with hyphens turned into underscores.
 func EnvSuffix(label string) string {
 	return strings.ToUpper(strings.ReplaceAll(label, "-", "_"))
@@ -374,7 +374,7 @@ func (c *Config) Validate() error {
 		errs = append(errs, errors.New("archive_root must not be empty"))
 	}
 	// The spam tree mirrors the archive tree at identical rel paths and both
-	// are walked by `save verify`; one inside the other would make every
+	// are walked by `comms verify`; one inside the other would make every
 	// spam-filed note an orphan of the archive (or the reverse) and let a
 	// move land a note inside the tree it was moved out of.
 	switch {
@@ -635,7 +635,7 @@ func PinTimezone(configPath, zoneName string) error {
 	return nil
 }
 
-const skeleton = `# save — local communication archiver.
+const skeleton = `# comms — local communication archiver.
 #
 # Every account is one repeatable block with a permanent, unique "label".
 # The label appears in every filename that account writes (gmail-work_…) and
@@ -649,15 +649,15 @@ const skeleton = `# save — local communication archiver.
 #
 # Each can be overridden per account from the environment, with the label
 # uppercased and '-' turned into '_':
-#   SAVE_GOOGLE_CLIENT_FILE_<LABEL>, SAVE_GOOGLE_TOKEN_FILE_<LABEL>,
-#   SAVE_FASTMAIL_TOKEN_<LABEL>
+#   COMMS_GOOGLE_CLIENT_FILE_<LABEL>, COMMS_GOOGLE_TOKEN_FILE_<LABEL>,
+#   COMMS_FASTMAIL_TOKEN_<LABEL>
 # The unsuffixed forms still work, but only with a single account of that kind.
 
 archive_root = "~/Archive"
 
 # Where noise triage files notes it decides are noise, at the same
 # YYYY/MM/DD/<name> path they had in the archive. Nothing is ever deleted;
-# ` + "`save untriage`" + ` moves a note back. Must be BESIDE archive_root — never inside
+# ` + "`comms untriage`" + ` moves a note back. Must be BESIDE archive_root — never inside
 # it — and on the same volume (a move is an atomic rename).
 # spam_root = "~/spam"          # default: a "spam" directory beside archive_root
 
@@ -676,7 +676,7 @@ fastmail_interval = "5m"
 
 # Attachment storage policy.
 #
-# save stores an attachment only when BOTH halves hold: its final extension is
+# comms stores an attachment only when BOTH halves hold: its final extension is
 # on the allowlist, AND the content sniffed from its magic bytes is one this
 # allowlist permits for that extension. "invoice.pdf.exe" keys on .exe and is
 # refused; a .pdf whose bytes are a zip is refused too.
@@ -685,7 +685,7 @@ fastmail_interval = "5m"
 # both the frontmatter "skipped_attachments:" list and a visible entry under
 # "## Attachments" — and into the state DB with the original name, the exact
 # byte count, the declared and sniffed types, the reason, and the identity
-# needed to fetch it again. Widen anything below and run ` + "`save refetch`" + ` to pull
+# needed to fetch it again. Widen anything below and run ` + "`comms refetch`" + ` to pull
 # the newly-permitted attachments in; a widened policy is NEVER acted on
 # automatically, so a typo here cannot silently download gigabytes.
 #
@@ -710,7 +710,7 @@ fastmail_interval = "5m"
 #                              # but keep writing the (tiny) notes. 0 disables.
 #
 # These ADD to and SUBTRACT from the built-in lists above — they do not replace
-# them. Deny always wins. A bare extension accepts any content for it (save has
+# them. Deny always wins. A bare extension accepts any content for it (comms has
 # no content table for a format it does not know); "ext=type/subtype" keeps both
 # halves of the rule enforceable. svg, zip and the macro-enabled Office
 # extensions are NOT set here — each has its own flag below, and naming one in
@@ -718,12 +718,12 @@ fastmail_interval = "5m"
 # allow_extensions = ["7z=application/x-7z-compressed"]
 # deny_extensions  = ["zip"]
 #
-# allow_containers = true   # keep .zip. save NEVER decompresses it, so it is
+# allow_containers = true   # keep .zip. comms NEVER decompresses it, so it is
 #                           # inert bytes on disk — but it is opaque, and the
 #                           # allowlist tells you nothing about the contents.
 # allow_svg        = false  # SVG is the one image format that is a program, and
 #                           # Obsidian (Electron) renders it in-note without any
-#                           # double-click. Reversible later via ` + "`save refetch`" + `.
+#                           # double-click. Reversible later via ` + "`comms refetch`" + `.
 # allow_macro_office = false  # docm/xlsm/pptm/dotm/xltm/potm must be denied by
 #                             # EXTENSION: they sniff as plain docx/xlsx/pptx,
 #                             # so content inspection cannot see the macros.
@@ -753,13 +753,13 @@ fastmail_interval = "5m"
 #                           # corrections take days — failing closed would
 #                           # delete real business documents.
 
-# Noise triage: a separate pass (` + "`save triage`" + `) that files newsletters,
+# Noise triage: a separate pass (` + "`comms triage`" + `) that files newsletters,
 # notifications and other noise under spam_root, at the same path they had in
-# the archive. Nothing is deleted; ` + "`save untriage`" + ` moves a note back. Sync is
+# the archive. Nothing is deleted; ` + "`comms untriage`" + ` moves a note back. Sync is
 # untouched — every message is archived first, exactly as before. Decisions
 # run in layers and stop at the first decisive one: 0 the protect list below,
 # 1 bulk-mail headers captured at archive time, 2 the rules in triage.toml
-# (written by ` + "`save init`" + `), 3 an optional local model. ` + "`save triage --dry-run`" + `
+# (written by ` + "`comms init`" + `), 3 an optional local model. ` + "`comms triage --dry-run`" + `
 # prints every move before anything moves.
 [triage]
 # after_sync = false        # run layers 0-2 after each successful sync pass
@@ -767,7 +767,7 @@ fastmail_interval = "5m"
 #                           # here unless llm.in_daemon is set.
 # header_heuristics = true  # layer 1: Precedence: bulk/junk, Auto-Submitted,
 #                           # X-Auto-Response-Suppress, Gmail Promotions/Social
-# rules_file = "~/.config/save/triage.toml"
+# rules_file = "~/.config/comms/triage.toml"
 #
 # The protect list: never noise, whatever the other layers say. A note with a
 # stored PDF/Office attachment and mail from your own addresses are protected
@@ -796,9 +796,9 @@ account = "you@example.com"
 gmail   = true
 chat    = true
 include_drafts     = false
-mirror_drive_files = false      # true adds drive.readonly (re-run ` + "`save auth google work`" + `)
+mirror_drive_files = false      # true adds drive.readonly (re-run ` + "`comms auth google work`" + `)
 show_deleted       = false
-# client_file = "~/.config/save/google-client-work.json"   # optional; default google-client.json
+# client_file = "~/.config/comms/google-client-work.json"   # optional; default google-client.json
 
 # An "Internal" OAuth client only accepts users of its OWN Workspace
 # organization, so an account in a different org needs its own Cloud project
@@ -809,14 +809,14 @@ label   = "personal"
 account = "you@example.net"
 gmail   = true
 chat    = true
-client_file = "~/.config/save/google-client-personal.json"
+client_file = "~/.config/comms/google-client-personal.json"
 
 [[fastmail]]
 label   = "fm"
 account = "you@fastmail.example"
 `
 
-// WriteSkeleton writes the commented example config for `save init` with
+// WriteSkeleton writes the commented example config for `comms init` with
 // 0600 permissions, creating the parent directory (0700) if needed. It
 // refuses to overwrite an existing file.
 func WriteSkeleton(configPath string) error {

@@ -65,7 +65,7 @@ func TestDigestIsOrderInsensitive(t *testing.T) {
 }
 
 // TestDigestIsSensitive: everything that can change a Verdict must change the
-// digest, or a widened policy would go unnoticed and `save refetch` would
+// digest, or a widened policy would go unnoticed and `comms refetch` would
 // never be offered.
 func TestDigestIsSensitive(t *testing.T) {
 	base := mustNew(t, nil).PolicyDigest()
@@ -110,7 +110,7 @@ func TestDigestIgnoresQuarantine(t *testing.T) {
 }
 
 // TestCanonicalShape keeps the encoding readable and self-describing, since it
-// is what `save doctor` prints when a digest changes unexpectedly.
+// is what `comms doctor` prints when a digest changes unexpectedly.
 func TestCanonicalShape(t *testing.T) {
 	c := mustNew(t, nil).Canonical()
 	if !strings.HasPrefix(c, "policy/v1\n") {

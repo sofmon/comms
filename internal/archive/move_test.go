@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"save/internal/naming"
-	"save/internal/state"
+	"comms/internal/naming"
+	"comms/internal/state"
 )
 
 // movedNote writes one email note with two attachments into a writer that

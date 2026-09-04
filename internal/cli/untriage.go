@@ -8,7 +8,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"save/internal/state"
+	"comms/internal/state"
 )
 
 func newUntriageCmd() *cobra.Command {
@@ -17,8 +17,8 @@ func newUntriageCmd() *cobra.Command {
 		Short: "Move a note noise triage filed under spam_root back into the archive",
 		Long: `Move one note back from spam_root into the archive, with its attachment
 folder, and record that you did: a note moved back by hand is never filed
-again by a later ` + "`save triage`" + ` pass, whatever the rules say (re-evaluate it
-deliberately with ` + "`save triage --reclassify --only manual`" + `).
+again by a later ` + "`comms triage`" + ` pass, whatever the rules say (re-evaluate it
+deliberately with ` + "`comms triage --reclassify --only manual`" + `).
 
 The note is named by its path — in either tree — or by its message id, as
 "<instance>/<id>" (e.g. gmail:work/18f2a...) or a bare id when only one
@@ -49,7 +49,7 @@ func runUntriage(out io.Writer, target string) error {
 	if err != nil {
 		return err
 	}
-	const reason = "moved back by save untriage"
+	const reason = "moved back by comms untriage"
 	if err := a.db.UpsertTriageDecision(state.TriageDecision{
 		Source: m.Source, StableID: m.StableID, Verdict: state.TriageSignal,
 		Layer: state.TriageLayerManual, Rule: "untriage", Reason: reason, Digest: manualRule,

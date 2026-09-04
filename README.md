@@ -1,6 +1,6 @@
-# save
+# comms
 
-`save` archives your communication locally as Markdown: **Gmail**, **Google Chat**
+`comms` archives your communication locally as Markdown: **Gmail**, **Google Chat**
 (Workspace), and **FastMail** in one merged, portable folder tree you own.
 
 > **This is a personal-use tool, not a hosted service.** It runs on your machine under
@@ -48,43 +48,46 @@ the new label). Two accounts that sit in the same Chat space each archive their 
 ## Install
 
 ```sh
-go build -o save ./cmd/save   # single static binary, macOS/Linux
+go build -o comms ./cmd/comms   # single static binary, macOS/Linux
 ```
+
+Existing local `save` installations should follow the
+[migration guide](docs/migrate-save-to-comms.md) before starting the renamed daemon.
 
 ## Quick start
 
 ```sh
-save init            # creates ~/.config/save (0700) + skeleton config.toml
-$EDITOR ~/.config/save/config.toml   # one block per account (see Configuration)
-save auth google work       # one-time browser consent, per [[google]] account
-save auth google personal   # …or `save auth google --all` to do every one in turn
-save auth fastmail fm       # paste that account's FastMail API token
-save sync            # first backfill — Gmail can take hours; safe to interrupt/resume
-save run             # daemon; or install the launchd plist for autostart
+comms init            # creates ~/.config/comms (0700) + skeleton config.toml
+$EDITOR ~/.config/comms/config.toml   # one block per account (see Configuration)
+comms auth google work       # one-time browser consent, per [[google]] account
+comms auth google personal   # …or `comms auth google --all` to do every one in turn
+comms auth fastmail fm       # paste that account's FastMail API token
+comms sync            # first backfill — Gmail can take hours; safe to interrupt/resume
+comms run             # daemon; or install the launchd plist for autostart
 ```
 
-The label may be omitted (`save auth google`) only when exactly one account of that kind
+The label may be omitted (`comms auth google`) only when exactly one account of that kind
 is configured; otherwise the command lists the configured labels and stops.
 
-`save doctor` checks the whole setup account by account and prints the exact walkthrough
-for anything missing. `save status` shows per-account cursors, counts, pending
-attachments, and warnings. `save verify` audits the archive tree — and the spam tree —
-against the state database. `save refetch` pulls in attachments a widened
+`comms doctor` checks the whole setup account by account and prints the exact walkthrough
+for anything missing. `comms status` shows per-account cursors, counts, pending
+attachments, and warnings. `comms verify` audits the archive tree — and the spam tree —
+against the state database. `comms refetch` pulls in attachments a widened
 [attachment policy](#attachment-safety) now accepts — never automatically.
-`save triage` files newsletters, notifications and other noise under a separate
+`comms triage` files newsletters, notifications and other noise under a separate
 `spam_root`, never deleting anything and never touching sync; see
-[Noise triage](#noise-triage). Start with `save triage --dry-run`.
+[Noise triage](#noise-triage). Start with `comms triage --dry-run`.
 
 ### Selecting accounts
 
-`save sync --source` accepts a source kind, an account label, or an exact instance id,
+`comms sync --source` accepts a source kind, an account label, or an exact instance id,
 and is repeatable:
 
 ```sh
-save sync --source gmail        # every Gmail account
-save sync --source work         # everything of the account labelled "work"
-save sync --source gmail:work   # exactly one instance
-save sync --source gmail:work --source fastmail:fm
+comms sync --source gmail        # every Gmail account
+comms sync --source work         # everything of the account labelled "work"
+comms sync --source gmail:work   # exactly one instance
+comms sync --source gmail:work --source fastmail:fm
 ```
 
 `--full` and `--retry-failed` apply only to the selected instances; other accounts' state
@@ -100,15 +103,15 @@ The tool talks to the Gmail and Chat APIs with your own OAuth client:
    and refresh tokens don't expire). Note: a Workspace admin can block unlisted OAuth
    clients from the Chat scopes.
 4. **Credentials → Create credentials → OAuth client ID** → type **Desktop app**.
-5. Download the client JSON to `~/.config/save/google-client.json` and `chmod 600` it.
-6. `save auth google <label>` — a browser opens for consent; that account's refresh token
-   is cached at `~/.config/save/google-token-<label>.json` (0600).
+5. Download the client JSON to `~/.config/comms/google-client.json` and `chmod 600` it.
+6. `comms auth google <label>` — a browser opens for consent; that account's refresh token
+   is cached at `~/.config/comms/google-token-<label>.json` (0600).
 
 One `[[google]]` block is one Google identity, and its single consent covers both its
 Gmail and its Chat. The scope set follows the block: `gmail = true` adds
 `gmail.readonly`, `chat = true` adds the three Chat read scopes, and
-`mirror_drive_files = true` adds `drive.readonly` — change any of them and `save doctor`
-tells you to re-run `save auth google <label>`.
+`mirror_drive_files = true` adds `drive.readonly` — change any of them and `comms doctor`
+tells you to re-run `comms auth google <label>`.
 
 ### Two accounts in different Workspace organizations
 
@@ -122,7 +125,7 @@ refused. Either:
 - publish the client as **External**, which brings OAuth verification and 7-day
   refresh-token expiry back.
 
-Accounts in the *same* org can share `google-client.json`; `save doctor` prints a note
+Accounts in the *same* org can share `google-client.json`; `comms doctor` prints a note
 whenever two accounts point at one client file so the cross-org trap is visible.
 
 Google Chat requires a Workspace account; on a consumer @gmail.com account the Chat
@@ -133,14 +136,14 @@ you need a one-shot chat export.
 
 1. FastMail web → **Settings → Privacy & Security → API tokens → New token**.
 2. Type **JMAP**, scope **read-only**. The token is shown exactly once.
-3. `save auth fastmail <label>` and paste it (or set `SAVE_FASTMAIL_TOKEN_<LABEL>`).
+3. `comms auth fastmail <label>` and paste it (or set `COMMS_FASTMAIL_TOKEN_<LABEL>`).
 
-The token is stored at `~/.config/save/fastmail-token-<label>` (0600). API tokens are not
+The token is stored at `~/.config/comms/fastmail-token-<label>` (0600). API tokens are not
 available on FastMail **Basic** plans.
 
 ## Configuration
 
-`~/.config/save/config.toml` — accounts are **repeatable blocks**, one per account
+`~/.config/comms/config.toml` — accounts are **repeatable blocks**, one per account
 (note the double brackets):
 
 ```toml
@@ -169,14 +172,14 @@ chat    = true
 include_drafts     = false
 mirror_drive_files = false
 show_deleted       = false
-# client_file = "~/.config/save/google-client-work.json"   # default: google-client.json
+# client_file = "~/.config/comms/google-client-work.json"   # default: google-client.json
 
 [[google]]
 label   = "personal"
 account = "you@example.net"
 gmail   = true
 chat    = true
-client_file = "~/.config/save/google-client-personal.json"   # different Workspace org
+client_file = "~/.config/comms/google-client-personal.json"   # different Workspace org
 
 [[fastmail]]
 label   = "fm"
@@ -190,17 +193,17 @@ account = "you@fastmail.example"
 | `timezone` | `"local"` | Resolved to an IANA zone on first sync, then pinned — the tree's day boundaries never shift even if the machine travels |
 | `[daemon] *_interval` | 5m / 2m / 5m | Poll intervals, global **per source kind** — every account of a kind polls on the same schedule (`gchat` short: history-off spaces retain messages only 24h) |
 | `[[google]] label` | — | Required, permanent, unique across **all** accounts of all kinds; must match `^[a-z0-9][a-z0-9-]{0,19}$` |
-| `[[google]] account` | — | The identity's email address; `save doctor` verifies the token really belongs to it |
+| `[[google]] account` | — | The identity's email address; `comms doctor` verifies the token really belongs to it |
 | `[[google]] gmail` / `chat` | false | What this identity archives; at least one must be true |
 | `[[google]] include_drafts` | false | Drafts churn message ids; off by default |
-| `[[google]] mirror_drive_files` | false | Off: Drive-backed Chat attachments are linked, not downloaded (on adds the `drive.readonly` scope — re-run `save auth google <label>`) |
+| `[[google]] mirror_drive_files` | false | Off: Drive-backed Chat attachments are linked, not downloaded (on adds the `drive.readonly` scope — re-run `comms auth google <label>`) |
 | `[[google]] show_deleted` | false | Keep "(message deleted)" tombstones in day files |
 | `[[google]] client_file` | `google-client.json` | This account's OAuth Desktop client JSON; needed when accounts are in different Workspace orgs |
 | `[[fastmail]] label` | — | Same rules as a Google label |
 | `[[fastmail]] account` | — | Informational, recorded in frontmatter — and one of the "own addresses" triage never files |
-| `[triage] after_sync` | false | Run the rules-only triage layers after each successful mail sync, in `save sync` and in the daemon |
+| `[triage] after_sync` | false | Run the rules-only triage layers after each successful mail sync, in `comms sync` and in the daemon |
 | `[triage] header_heuristics` | true | Let the bulk-mail headers captured at archive time decide (Precedence: bulk/junk, Auto-Submitted, X-Auto-Response-Suppress, Gmail Promotions/Social) |
-| `[triage] rules_file` | `~/.config/save/triage.toml` | The `[[keep]]` / `[[noise]]` rules; `save init` writes a starter |
+| `[triage] rules_file` | `~/.config/comms/triage.toml` | The `[[keep]]` / `[[noise]]` rules; `comms init` writes a starter |
 | `[triage] protect_from` / `protect_subject` | `[]` / invoices, receipts, security alerts, new sign-ins | Globs that are signal before any other layer runs; a stored PDF/Office attachment and your own addresses are protected always |
 | `[triage.llm] enabled` | false | Ask a local model about the notes the rules left undecided |
 | `[triage.llm] in_daemon` | false | Let the `after_sync` pass ask it too (off: a stopped endpoint costs the archiver nothing) |
@@ -220,26 +223,26 @@ Everything lives in the config dir (all `0600`, directory `0700`):
 |---|---|---|
 | `google-client.json` | shared | Used by every `[[google]]` block without a `client_file` |
 | `google-token-<label>.json` | account | Always per label — two identities can never share one |
-| `fastmail-token-<label>` | account | Written by `save auth fastmail <label>` |
+| `fastmail-token-<label>` | account | Written by `comms auth fastmail <label>` |
 
-Env overrides: `SAVE_CONFIG_DIR`, `SAVE_ARCHIVE_ROOT`, `SAVE_SPAM_ROOT`, plus per-account
-`SAVE_GOOGLE_CLIENT_FILE_<LABEL>`, `SAVE_GOOGLE_TOKEN_FILE_<LABEL>`,
-`SAVE_FASTMAIL_TOKEN_<LABEL>` (label uppercased, `-` → `_`; e.g.
-`SAVE_FASTMAIL_TOKEN_FM`). The unsuffixed `SAVE_GOOGLE_CLIENT_FILE`,
-`SAVE_GOOGLE_TOKEN_FILE` and `SAVE_FASTMAIL_TOKEN` still work, but **only** when exactly
+Env overrides: `COMMS_CONFIG_DIR`, `COMMS_ARCHIVE_ROOT`, `COMMS_SPAM_ROOT`, plus per-account
+`COMMS_GOOGLE_CLIENT_FILE_<LABEL>`, `COMMS_GOOGLE_TOKEN_FILE_<LABEL>`,
+`COMMS_FASTMAIL_TOKEN_<LABEL>` (label uppercased, `-` → `_`; e.g.
+`COMMS_FASTMAIL_TOKEN_FM`). The unsuffixed `COMMS_GOOGLE_CLIENT_FILE`,
+`COMMS_GOOGLE_TOKEN_FILE` and `COMMS_FASTMAIL_TOKEN` still work, but **only** when exactly
 one account of that kind is configured — with two they are ignored, so a stray variable
 cannot silently point both accounts at one credential.
 
 Scope: all mail including Sent and Archive, excluding Spam and Trash (messages later
 rescued from spam are picked up). Chat: DMs, group chats, and all spaces you're a
-member of. Sync state lives in `~/.local/state/save/state.db`, keyed by instance
+member of. Sync state lives in `~/.local/state/comms/state.db`, keyed by instance
 (`gmail:work`, `gchat:personal`, `fastmail:fm`) — deleting it is safe (the next sync
 re-enumerates and skips everything already on disk).
 
 ## Attachment safety
 
 Attachments are the only bytes in this archive that an attacker chooses. Everything else
-save writes is its own text. So attachments get their own rule, and it is an
+comms writes is its own text. So attachments get their own rule, and it is an
 **allowlist**, not a blocklist.
 
 > An attachment is stored **iff** its normalized final extension is on the allowlist
@@ -251,7 +254,7 @@ extension counts, after Unicode normalization, case folding and stripping traili
 and spaces. A `.pdf` whose bytes are actually a zip is refused too, because the extension
 half alone is advisory: it only describes what the sender claimed.
 
-The check runs on the **final** filename — the one that would land on disk, after save's
+The check runs on the **final** filename — the one that would land on disk, after comms's
 sanitizer has already rewritten anything iCloud silently refuses to sync — so the name
 that is judged is the name that exists.
 
@@ -262,7 +265,7 @@ in the state database with the identity needed to fetch it later. See
 ### Why an allowlist at all
 
 The threat here is not mainly you double-clicking something. macOS Spotlight parses files
-at rest, with no user action, the moment save writes them into the vault — and the
+at rest, with no user action, the moment comms writes them into the vault — and the
 installed importers cover almost exactly the formats an archive like this collects. That
 passive parsing, not first open, is the real exposure, and there are documented zero-click
 CVEs in that path. An allowlist is the only control that reduces it, because it decides
@@ -289,20 +292,20 @@ Denied: macro-enabled Office, `svg`, `7z rar tar gz tgz bz2 xz cab`, and 65
 macOS-executable and Windows-payload extensions.
 
 The executable types are a **hard deny**: `allow_extensions` cannot bring them back, and
-naming one there is a config error rather than a silent no-op. `save refetch` can never
+naming one there is a config error rather than a silent no-op. `comms refetch` can never
 select one either, whatever the config says.
 
 ### The four contested defaults
 
 | | Default | Why | Change it with |
 |---|---|---|---|
-| **zip** | **allowed** | Ubiquitous in real business mail, and save never decompresses it, so it is inert bytes on disk. But it is *opaque* — the allowlist tells you nothing about the contents, and that guarantee is absent entirely on FastMail. | `allow_containers = false` |
+| **zip** | **allowed** | Ubiquitous in real business mail, and comms never decompresses it, so it is inert bytes on disk. But it is *opaque* — the allowlist tells you nothing about the contents, and that guarantee is absent entirely on FastMail. | `allow_containers = false` |
 | **svg** | **denied** | The one image format that is a program. The archive lives in an Obsidian vault, and Obsidian is Electron: it renders SVG in-note, so it executes without anyone double-clicking anything. | `allow_svg = true` |
-| **macro-Office** (`docm xlsm pptm dotm xltm potm`) | **denied** | Must be denied by *extension*: content sniffing reports them as plain `docx/xlsx/pptx`, so it offers zero protection here. save additionally reads the zip *central directory names only* (never inflating) to catch a `.docm` renamed to `.docx`. | `allow_macro_office = true` |
-| **eml / msg** | **allowed** | Forwarded mail *is* the correspondence this archive exists to keep; dropping a `.eml` drops the evidence. Caveat, stated in the note: save does **not** recurse into it — the nested message's own attachments are neither extracted nor policy-checked, they ride along inside the file. | `deny_extensions = ["eml", "msg"]` |
+| **macro-Office** (`docm xlsm pptm dotm xltm potm`) | **denied** | Must be denied by *extension*: content sniffing reports them as plain `docx/xlsx/pptx`, so it offers zero protection here. comms additionally reads the zip *central directory names only* (never inflating) to catch a `.docm` renamed to `.docx`. | `allow_macro_office = true` |
+| **eml / msg** | **allowed** | Forwarded mail *is* the correspondence this archive exists to keep; dropping a `.eml` drops the evidence. Caveat, stated in the note: comms does **not** recurse into it — the nested message's own attachments are neither extracted nor policy-checked, they ride along inside the file. | `deny_extensions = ["eml", "msg"]` |
 
 Denying something later never deletes what is already archived; the notes simply stop
-linking it. Allowing something later is recoverable via [`save refetch`](#save-refetch) —
+linking it. Allowing something later is recoverable via [`comms refetch`](#comms-refetch) —
 which is what makes every one of these decisions cheap to reverse.
 
 ### Size and budget caps
@@ -327,11 +330,11 @@ Raise `chat_max_size` if large work media is worth keeping.
 
 `free_space_floor` is enforced for real, per write: below it, the attachment is refused
 and recorded while the (tiny) note is still written, so mail keeps archiving on a full
-disk instead of the sync dying. `save refetch` checks the whole plan against the floor up
+disk instead of the sync dying. `comms refetch` checks the whole plan against the floor up
 front and refuses before the first byte.
 
 `run_budget` and `free_space_floor` are the two **transient** reasons: they describe the
-machine or the pass, not the attachment. `save refetch` retries them whether or not the
+machine or the pass, not the attachment. `comms refetch` retries them whether or not the
 policy changed.
 
 ### Skip records
@@ -358,12 +361,12 @@ The wording is accurate per source: on Gmail and FastMail the bytes **were downl
 discarded** (both fetch the whole message), while a Chat blob refused before its download
 genuinely **was never fetched** — and the note says which.
 
-`save status` totals them per account, by reason, in bytes:
+`comms status` totals them per account, by reason, in bytes:
 
 ```
 attachments:  policy CHANGED — now 8c1a…, archive last reconsidered under fb70e01d2e46670e
               41 unresolved skip(s); 12 (18.4 MB) would be accepted by the current policy
-              nothing is ever re-fetched automatically — run `save refetch --dry-run`
+              nothing is ever re-fetched automatically — run `comms refetch --dry-run`
 
 gmail:work — you@example.com
   refused:      41 attachment(s) by the attachment policy, 260.1 MB not stored (41 unresolved, 260.1 MB)
@@ -372,16 +375,16 @@ gmail:work — you@example.com
     macro_office                  4 (4 unresolved)
 ```
 
-### `save refetch`
+### `comms refetch`
 
 Widening the policy does **not** retroactively fetch anything. A sync notices the digest
 changed, says so, and stops there. Fetching is one explicit command:
 
 ```sh
-save refetch --dry-run              # what would be fetched, and how many bytes
-save refetch                        # do it
-save refetch --source fastmail:fm   # same selector grammar as `save sync`
-save refetch --reason svg_denied    # only what one config change unblocked
+comms refetch --dry-run              # what would be fetched, and how many bytes
+comms refetch                        # do it
+comms refetch --source fastmail:fm   # same selector grammar as `comms sync`
+comms refetch --reason svg_denied    # only what one config change unblocked
 ```
 
 This is deliberate. A typo in `[attachments]` should not be able to pull gigabytes onto a
@@ -405,7 +408,7 @@ recorded, nothing is overwritten: the divergence is recorded in the failures led
 skip stays unresolved, and the command exits non-zero. Silently replacing archived bytes
 with different ones is the one outcome worse than not fetching them.
 
-A full clean run advances the recorded policy digest, which is what stops `save status`
+A full clean run advances the recorded policy digest, which is what stops `comms status`
 nagging. A `--source` or `--reason` run is partial by construction and never does.
 
 ### Quarantine tagging: what it is and is not
@@ -453,7 +456,7 @@ own:
 
 > Noise is **moved**, never deleted. A note triage files as noise goes to `spam_root` at
 > the identical `YYYY/MM/DD/<name>` path it had in the archive, with its attachment
-> folder, and `save untriage` brings it back. Sync is untouched.
+> folder, and `comms untriage` brings it back. Sync is untouched.
 
 The state database is the source of truth for where a note is. Every command that
 resolves a note's path — `verify`, `refetch`, `untriage`, the daemon — asks the row which
@@ -471,7 +474,7 @@ Classification runs in layers and stops at the first decisive one:
 | 3 llm | A local model, only if enabled, only for what layers 0–2 left undecided | signal or noise — or undecided |
 
 **Undecided is never noise.** A note no layer decides stays exactly where it is; the
-decision is recorded so `save status` can say how much of the archive the rules do not
+decision is recorded so `comms status` can say how much of the archive the rules do not
 cover. A note is only ever in `spam_root` because a rule put it there, so a rules change
 that no longer calls it noise brings it back on the next pass.
 
@@ -503,17 +506,17 @@ account_label = ["personal"]
 
 Fields: `from`, `to` (also matches Cc), `subject`, `list_id`, `labels`, `account_label`.
 
-### `save triage`
+### `comms triage`
 
 ```sh
-save triage --dry-run                     # every move, file by file, with rule and reason; moves nothing
-save triage                               # do it
-save triage --day 2026-08-07              # one day (in the archive's pinned zone); --since for a range
-save triage --source gmail:work           # same selector grammar as `save sync`
-save triage --reclassify                  # re-evaluate notes already decided under these rules
-save triage --reclassify --only llm       # ...but only the model's decisions
-save triage --explain <path-to-note.md>   # what each layer made of one note
-save untriage <path-or-id>                # bring a note back; it is yours from then on
+comms triage --dry-run                     # every move, file by file, with rule and reason; moves nothing
+comms triage                               # do it
+comms triage --day 2026-08-07              # one day (in the archive's pinned zone); --since for a range
+comms triage --source gmail:work           # same selector grammar as `comms sync`
+comms triage --reclassify                  # re-evaluate notes already decided under these rules
+comms triage --reclassify --only llm       # ...but only the model's decisions
+comms triage --explain <path-to-note.md>   # what each layer made of one note
+comms untriage <path-or-id>                # bring a note back; it is yours from then on
 ```
 
 A pass looks at the notes not yet **settled** under the current *triage digest* — a hash
@@ -525,12 +528,12 @@ no-op. `--reclassify` re-evaluates regardless.
 Each move is two atomic renames — the `.md`, then its `.d/` attachment folder — followed
 by the database update, in that order, so the database never claims a location the files
 have not reached. A crash between the two leaves a state the next pass recognises and
-finishes: the `.md`'s location wins, the folder follows it, then the row. `save verify`
+finishes: the `.md`'s location wins, the folder follows it, then the row. `comms verify`
 audits both trees and reports a note found in both, or in neither, or in the wrong one.
 
-A note you bring back with `save untriage` is recorded as kept **by hand** and is never
+A note you bring back with `comms untriage` is recorded as kept **by hand** and is never
 filed again by a later pass, whatever the rules say, until you ask for exactly that with
-`save triage --reclassify --only manual`.
+`comms triage --reclassify --only manual`.
 
 ### The model is last and optional
 
@@ -568,7 +571,7 @@ archive_root = "~/Library/Mobile Documents/iCloud~md~obsidian/Documents/MyVault/
 ```
 
 Spaces and the embedded `~` in `iCloud~md~obsidian` are fine — only a **leading** `~/` is
-expanded, the rest of the path is taken literally. `save doctor` prints a whole
+expanded, the rest of the path is taken literally. `comms doctor` prints a whole
 `archive storage` section when it notices the root is inside `~/Library/Mobile Documents`
 or `~/Library/CloudStorage`; read it.
 
@@ -576,16 +579,16 @@ Everything here applies to `spam_root` too — with one difference that is the p
 having it: it does not have to be in the vault at all. The default puts it beside
 `archive_root` (a vault at `…/MyVault/Communication` gets `…/MyVault/spam`, which
 Obsidian will index); setting `spam_root` to a plain folder on the same volume keeps the
-noise out of the vault, out of iCloud and off your phone, while `save untriage` still
+noise out of the vault, out of iCloud and off your phone, while `comms untriage` still
 brings any note back. Filenames are unchanged by a move, so the sanitizer's guarantees
 hold in both trees.
 
 **The state database must stay outside the synced tree.** This is the one hard error
-`save doctor` reports. `state.db` is a WAL-mode SQLite database: three files (`state.db`,
+`comms doctor` reports. `state.db` is a WAL-mode SQLite database: three files (`state.db`,
 `state.db-wal`, `state.db-shm`) whose consistency is maintained by byte-range locks that
 a sync agent knows nothing about. Uploading, evicting or restoring any one of them
 independently corrupts the database, silently. The default location
-(`~/.local/state/save`, or `$XDG_STATE_HOME/save`) is already outside; just don't move it
+(`~/.local/state/comms`, or `$XDG_STATE_HOME/comms`) is already outside; just don't move it
 in. Deleting the database is always safe — the next sync re-enumerates and skips
 everything already on disk.
 
@@ -594,10 +597,10 @@ everything already on disk.
 has already uploaded, leaving a placeholder. `ls` still shows the right size, but reading
 one costs about a second while it downloads — and fails outright if you are offline.
 Either turn the setting off, or right-click the archive folder in Finder and choose
-**Keep Downloaded** to pin just that tree. `save doctor` reads the current setting and
+**Keep Downloaded** to pin just that tree. `comms doctor` reads the current setting and
 tells you which way it is.
 
-**`save verify` skips evicted files by default.** A verify pass hashes every file it has
+**`comms verify` skips evicted files by default.** A verify pass hashes every file it has
 ever written; on an evicted archive that is a full re-download of everything, at roughly a
 second per file, onto a disk the system emptied on purpose. So verify stats each file
 first, skips the ones whose bytes are not local, and reports the count:
@@ -608,7 +611,7 @@ checked 41203 emails, 512 chat day files, 8871 completed attachments; 0 orphan(s
 checked; re-run with --materialize to download and hash them
 ```
 
-`save verify --materialize` does the full read-everything audit. Make sure the disk can
+`comms verify --materialize` does the full read-everything audit. Make sure the disk can
 hold the entire archive before you use it. For belt and braces, the default pass also
 pins its own process I/O policy so that an accidental read *cannot* trigger a download.
 
@@ -616,11 +619,11 @@ pins its own process I/O policy so that an accidental read *cannot* trigger a do
 gigabytes, and every byte is charged twice: once to local disk and once to the iCloud
 storage plan. Below roughly 20 GiB free, macOS starts evicting iCloud content to reclaim
 space — which is exactly the state that turns a freshly written archive into placeholders.
-`save doctor` warns under that mark.
+`comms doctor` warns under that mark.
 
 **Privacy.** Everything archived here leaves the machine for Apple's servers and comes
 back down on every device signed into the same account. On those devices it lands with the
-provider's own permissions (0644 files, 0755 directories): save's local `0600`/`0700`
+provider's own permissions (0644 files, 0755 directories): comms's local `0600`/`0700`
 hardening protects the copy on this Mac and nothing else. Your entire mail archive in
 plaintext Markdown, in someone else's datacentre, is a deliberate choice — make it
 deliberately.
@@ -634,20 +637,20 @@ the archive, or exclude the folder from Obsidian's search.
 - The writer's staging directory is `<archive_root>/.tmp`, and iCloud refuses to sync
   anything named `.tmp`. That is intentional: nothing half-written is ever uploaded, and
   the final rename stays on one volume, so it is atomic. Don't move or rename it.
-- Every filename save generates is checked against iCloud's silent
+- Every filename comms generates is checked against iCloud's silent
   filename-exclusion list (`.nosync`, `.tmp`, `Dropbox`, `~$…`, `desktop.ini`, …) and
   rewritten if it matches — an attachment called `Q3 draft.tmp` is stored as
-  `Q3 draft.tmp.bin`. Without that, the file would sit on disk, hash clean in `save
+  `Q3 draft.tmp.bin`. Without that, the file would sit on disk, hash clean in `comms
   verify`, and never leave the machine.
 
 ## Autostart on macOS
 
 ```sh
-cp docs/launchd/com.user.save.plist ~/Library/LaunchAgents/
-launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.user.save.plist
+cp docs/launchd/com.user.comms.plist ~/Library/LaunchAgents/
+launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.user.comms.plist
 ```
 
-Edit the plist's binary path first; it runs `save run` with `KeepAlive`.
+Edit the plist's binary path first; it runs `comms run` with `KeepAlive`.
 
 It must be a **user LaunchAgent** in `~/Library/LaunchAgents`, not a system LaunchDaemon
 in `/Library/LaunchDaemons`. Besides needing your home directory and your OAuth tokens,
@@ -664,7 +667,7 @@ GUI-session agent inherits the session policy, which is on. (launchd's
 - Gmail history expiry, FastMail state expiry, and interrupted backfills all
   self-heal by cheap re-enumeration with dedup.
 - A message that keeps failing is skipped after 5 attempts and surfaced in
-  `save status` instead of wedging the sync forever.
+  `comms status` instead of wedging the sync forever.
 - **No attachment is ever dropped silently.** Every one the policy refuses is written into
   its note *and* into a ledger row carrying the identity needed to fetch it later, so
   widening the policy is always recoverable and never automatic
@@ -679,7 +682,7 @@ GUI-session agent inherits the session policy, which is on. (launchd's
   (`gmail:work`), so one account's backlog or poison item never affects another's, and a
   Gmail token is refused if it does not belong to the address its block names.
 - Credentials, by contrast, are checked for *every* selected account up front: if one
-  account is unauthorized, `save sync` and `save run` stop with that account's re-auth
+  account is unauthorized, `comms sync` and `comms run` stop with that account's re-auth
   instruction rather than running the others. Use `--source` to sync the healthy accounts
   while you sort out a broken one.
 
@@ -695,6 +698,6 @@ Package map: `internal/source/{gmail,gchat,fastmail}` connectors →
 rendering) with `internal/state` (SQLite cursors/index) underneath.
 `internal/policy` is the single attachment storage decision engine every one of
 them shares — one implementation, one `PolicyDigest`. `internal/triage` is the
-noise classifier (rules, headers, the optional model) that `save triage` runs as
+noise classifier (rules, headers, the optional model) that `comms triage` runs as
 a post-pass; the mover lives in `internal/archive`. See the plan in the repo
 history for the full design.

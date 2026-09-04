@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"save/internal/naming"
-	"save/internal/state"
+	"comms/internal/naming"
+	"comms/internal/state"
 )
 
 const testSpace = "spaces/AAA"

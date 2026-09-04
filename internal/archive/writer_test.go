@@ -12,8 +12,8 @@ import (
 	"testing"
 	"time"
 
-	"save/internal/emailpipe"
-	"save/internal/naming"
+	"comms/internal/emailpipe"
+	"comms/internal/naming"
 )
 
 // tzAms is a fixed zone so tests never depend on the host tz database.

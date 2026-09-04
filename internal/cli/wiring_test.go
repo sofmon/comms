@@ -17,7 +17,7 @@ import (
 // allowlist while ignoring the operator's whole [attachments] block. Worse,
 // the notes and the skipped_attachments rows would record
 // cfg.Policy().PolicyDigest() — a digest that did not produce those
-// decisions — which is what `save refetch` keys on, so the record would be
+// decisions — which is what `comms refetch` keys on, so the record would be
 // actively wrong rather than merely stale.
 //
 // A behavioural test cannot reach this: buildSources needs live OAuth

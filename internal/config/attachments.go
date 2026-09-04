@@ -5,18 +5,18 @@ import (
 	"fmt"
 	"strings"
 
-	"save/internal/policy"
+	"comms/internal/policy"
 )
 
 // Attachments is the [attachments] block: the storage policy for everything
 // that arrives attached to a message.
 //
-// save stores an attachment only when its final extension is allowlisted AND
+// comms stores an attachment only when its final extension is allowlisted AND
 // the content sniffed from its magic bytes is permitted for that extension.
 // Anything else is REFUSED, never silently dropped: the refusal is written
 // into the note (frontmatter `skipped_attachments:` and a visible entry under
 // "## Attachments") and into the state DB with the identity needed to fetch it
-// later, so widening this block and running `save refetch` recovers it.
+// later, so widening this block and running `comms refetch` recovers it.
 //
 // The decision engine itself lives in internal/policy; this block is only its
 // configuration. PolicySettings converts one into the other.
@@ -56,13 +56,13 @@ type Attachments struct {
 	// AllowExtensions ADDS to the built-in allowlist; DenyExtensions
 	// SUBTRACTS from it. Deny always wins. Neither replaces the built-in
 	// list. An entry may be a bare extension ("7z"), which accepts any
-	// content for it because save has no content table for a format it does
+	// content for it because comms has no content table for a format it does
 	// not know, or an explicit mapping ("7z=application/x-7z-compressed"),
 	// which keeps both halves of the rule enforceable.
 	AllowExtensions []string `toml:"allow_extensions"`
 	DenyExtensions  []string `toml:"deny_extensions"`
 
-	// AllowContainers keeps .zip (default true). save never decompresses it,
+	// AllowContainers keeps .zip (default true). comms never decompresses it,
 	// so it is inert bytes on disk — but it is also opaque, so the allowlist
 	// says nothing about what is inside.
 	AllowContainers bool `toml:"allow_containers"`

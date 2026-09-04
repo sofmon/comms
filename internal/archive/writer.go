@@ -18,7 +18,7 @@
 //
 // # Attachments the policy refused
 //
-// save/internal/policy decides what may be stored; this package is where the
+// comms/internal/policy decides what may be stored; this package is where the
 // refusals become visible. Nothing is ever dropped silently, so every refused
 // part is rendered twice into its note — once as a machine-readable
 // skipped_attachments frontmatter entry, once as a bolded block under
@@ -28,12 +28,12 @@
 //
 // Because a widened policy has to be able to turn a skip record back into a
 // real link, RewriteEmail re-renders an already-archived note in place and
-// returns its new content hash. That is the piece `save refetch` needs; chat
+// returns its new content hash. That is the piece `comms refetch` needs; chat
 // day files need no equivalent, being whole-file projections already.
 //
 // # Provenance metadata
 //
-// Attachment files — never save's own .md notes — are tagged with
+// Attachment files — never comms's own .md notes — are tagged with
 // com.apple.quarantine and com.apple.metadata:kMDItemWhereFroms on the staged
 // temp file, before the rename, so the attributes are never missing from a
 // path anything can observe. See QuarantineMode for the honest scope of what
@@ -56,10 +56,10 @@ import (
 	"github.com/google/renameio/v2"
 	"gopkg.in/yaml.v3"
 
-	"save/internal/emailpipe"
-	"save/internal/naming"
-	"save/internal/policy"
-	"save/internal/state"
+	"comms/internal/emailpipe"
+	"comms/internal/naming"
+	"comms/internal/policy"
+	"comms/internal/state"
 )
 
 // Writer writes archive files under Root. TZ is the pinned archive timezone
@@ -230,7 +230,7 @@ func (w *Writer) WriteEmail(doc *emailpipe.EmailDoc, meta EmailMeta) (relPath, c
 // replacing the .md and returning its new content hash. The caller must
 // update messages.content_hash with it in the same commit.
 //
-// This is the counterpart to `save refetch`: a widened policy turns a skip
+// This is the counterpart to `comms refetch`: a widened policy turns a skip
 // into a real attachment, and without a re-render the bytes would land on
 // disk while the note still said they were skipped. It is deliberately a
 // separate entry point from WriteEmail — it refuses to CREATE a note,
@@ -326,7 +326,7 @@ func (w *Writer) writeEmail(doc *emailpipe.EmailDoc, meta EmailMeta, mustExist b
 	}
 
 	// Attachment files carry the macOS provenance xattrs; the .md note does
-	// not — it is save's own text, not something that arrived from outside.
+	// not — it is comms's own text, not something that arrived from outside.
 	origin := meta.origin(doc)
 	for _, f := range doc.Files {
 		if err := w.writeAtomic(root, writeSpec{
@@ -417,7 +417,7 @@ func (w *Writer) SkippedRows(doc *emailpipe.EmailDoc, meta EmailMeta, noteRelPat
 // like an email destination (path budget, iCloud sync exclusion, dataless
 // guard, rename confirmation).
 //
-// It writes save's own rendered text, so nothing is quarantine-tagged. Chat
+// It writes comms's own rendered text, so nothing is quarantine-tagged. Chat
 // attachment blobs are bytes that arrived from outside and must go through
 // WriteChatAttachment instead.
 func (w *Writer) WriteChatDay(relPath string, content []byte) (contentHash string, err error) {
@@ -534,7 +534,7 @@ type writeSpec struct {
 	content []byte
 
 	// tag requests com.apple.quarantine (and kMDItemWhereFroms, when origin
-	// says anything). True for attachment files, false for save's own .md
+	// says anything). True for attachment files, false for comms's own .md
 	// notes — tagging text this program generated would be a lie about where
 	// it came from, and would make Obsidian's own files look downloaded.
 	tag    bool
@@ -652,7 +652,7 @@ func (w *Writer) checkDest(root, rel string) error {
 			if root != w.Root && root == w.SpamRoot {
 				which = "spam root"
 			}
-			return fmt.Errorf("cannot write %s: %w; the %s %q already uses %d of the %d-byte budget, leaving %d bytes for root-relative paths and this one needs %d — the %s is the likely cause: move it to a shorter path (`save doctor` reports the remaining budget)",
+			return fmt.Errorf("cannot write %s: %w; the %s %q already uses %d of the %d-byte budget, leaving %d bytes for root-relative paths and this one needs %d — the %s is the likely cause: move it to a shorter path (`comms doctor` reports the remaining budget)",
 				rel, err, which, root, len(root), naming.MaxPathBytes, naming.PathBudget(root), len(rel), which)
 		}
 		return fmt.Errorf("cannot write %s: %w", rel, err)

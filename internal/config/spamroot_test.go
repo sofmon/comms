@@ -11,7 +11,7 @@ import (
 // tree is a sibling of the archive, never a child of it.
 func TestSpamRootDefaultsBesideArchiveRoot(t *testing.T) {
 	clearEnv(t)
-	t.Setenv("SAVE_CONFIG_DIR", t.TempDir())
+	t.Setenv("COMMS_CONFIG_DIR", t.TempDir())
 	base := t.TempDir()
 	cfg, err := Load(writeConfig(t, `archive_root = "`+filepath.Join(base, "Communication")+`"`+minimalValid))
 	if err != nil {
@@ -36,10 +36,10 @@ func TestSpamRootDefaultsBesideArchiveRoot(t *testing.T) {
 }
 
 // TestSpamRootExplicitAndEnv: an explicit value is tilde-expanded, and the
-// environment override wins over the file, like SAVE_ARCHIVE_ROOT does.
+// environment override wins over the file, like COMMS_ARCHIVE_ROOT does.
 func TestSpamRootExplicitAndEnv(t *testing.T) {
 	clearEnv(t)
-	t.Setenv("SAVE_CONFIG_DIR", t.TempDir())
+	t.Setenv("COMMS_CONFIG_DIR", t.TempDir())
 	home, _ := os.UserHomeDir()
 
 	cfg, err := Load(writeConfig(t, `archive_root = "~/Archive"
@@ -52,14 +52,14 @@ spam_root = "~/Noise"`+minimalValid))
 	}
 
 	override := t.TempDir()
-	t.Setenv("SAVE_SPAM_ROOT", override)
+	t.Setenv("COMMS_SPAM_ROOT", override)
 	cfg, err = Load(writeConfig(t, `archive_root = "~/Archive"
 spam_root = "~/Noise"`+minimalValid))
 	if err != nil {
 		t.Fatalf("Load: %v", err)
 	}
 	if cfg.SpamRoot != override {
-		t.Errorf("SpamRoot with SAVE_SPAM_ROOT = %q, want %q", cfg.SpamRoot, override)
+		t.Errorf("SpamRoot with COMMS_SPAM_ROOT = %q, want %q", cfg.SpamRoot, override)
 	}
 }
 
@@ -68,7 +68,7 @@ spam_root = "~/Noise"`+minimalValid))
 // and so is the same directory for both.
 func TestSpamRootMayNotNestWithArchiveRoot(t *testing.T) {
 	clearEnv(t)
-	t.Setenv("SAVE_CONFIG_DIR", t.TempDir())
+	t.Setenv("COMMS_CONFIG_DIR", t.TempDir())
 	base := t.TempDir()
 	for name, tc := range map[string]struct{ archive, spam, want string }{
 		"spam inside archive": {filepath.Join(base, "a"), filepath.Join(base, "a", "spam"), "inside archive_root"},

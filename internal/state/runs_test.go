@@ -3,7 +3,7 @@ package state_test
 import (
 	"testing"
 
-	"save/internal/state"
+	"comms/internal/state"
 )
 
 func TestSyncRunsLifecycle(t *testing.T) {

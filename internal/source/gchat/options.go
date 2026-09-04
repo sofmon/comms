@@ -1,8 +1,8 @@
 package gchat
 
 import (
-	"save/internal/policy"
-	"save/internal/source"
+	"comms/internal/policy"
+	"comms/internal/source"
 )
 
 // Option adjusts a connector at construction.

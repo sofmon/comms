@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"save/internal/state"
+	"comms/internal/state"
 )
 
 func TestEmailDedup(t *testing.T) {

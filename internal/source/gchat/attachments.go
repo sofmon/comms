@@ -11,10 +11,10 @@ import (
 	"strings"
 	"time"
 
-	"save/internal/archive"
-	"save/internal/policy"
-	"save/internal/retry"
-	"save/internal/state"
+	"comms/internal/archive"
+	"comms/internal/policy"
+	"comms/internal/retry"
+	"comms/internal/state"
 )
 
 const (
@@ -156,7 +156,7 @@ func (c *Connector) downloadOne(ctx context.Context, a state.Attachment) error {
 // A refusal produces two writes, in this order:
 //
 //  1. the skipped_attachments row, which is the durable record and the thing
-//     `save refetch` re-decides later. Unlike a pre-download refusal it
+//     `comms refetch` re-decides later. Unlike a pre-download refusal it
 //     carries the sniffed type AND the content hash, because the bytes were
 //     in hand;
 //  2. the ledger row marked failed, which stops the download being retried
@@ -164,7 +164,7 @@ func (c *Connector) downloadOne(ctx context.Context, a state.Attachment) error {
 //
 // The row is marked failed rather than deleted or marked done because those
 // are the only three states the ledger has, and the other two would lie: the
-// blob is not on disk. Its last_error names the policy, so `save status` does
+// blob is not on disk. Its last_error names the policy, so `comms status` does
 // not read as a network problem. The day file shows both the ledger row's
 // "attachment unavailable" line and the skip's full explanation — redundant,
 // but never contradictory, and the explanation is the one that matters.

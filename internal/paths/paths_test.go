@@ -10,18 +10,18 @@ import (
 func TestConfigDir(t *testing.T) {
 	tests := []struct {
 		name       string
-		saveDir    string
+		commsDir   string
 		xdgConfig  string
 		want       string // exact match when non-empty
 		wantSuffix string // suffix match otherwise
 	}{
-		{name: "save_config_dir wins", saveDir: "/custom/cfg", xdgConfig: "/xdg", want: "/custom/cfg"},
-		{name: "xdg_config_home", xdgConfig: "/xdg", want: filepath.Join("/xdg", "save")},
-		{name: "default unix style", wantSuffix: filepath.Join(".config", "save")},
+		{name: "comms_config_dir wins", commsDir: "/custom/cfg", xdgConfig: "/xdg", want: "/custom/cfg"},
+		{name: "xdg_config_home", xdgConfig: "/xdg", want: filepath.Join("/xdg", "comms")},
+		{name: "default unix style", wantSuffix: filepath.Join(".config", "comms")},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Setenv("SAVE_CONFIG_DIR", tt.saveDir)
+			t.Setenv("COMMS_CONFIG_DIR", tt.commsDir)
 			t.Setenv("XDG_CONFIG_HOME", tt.xdgConfig)
 			got := ConfigDir()
 			if tt.want != "" && got != tt.want {
@@ -36,11 +36,11 @@ func TestConfigDir(t *testing.T) {
 
 func TestStateDir(t *testing.T) {
 	t.Setenv("XDG_STATE_HOME", "/xdgstate")
-	if got, want := StateDir(), filepath.Join("/xdgstate", "save"); got != want {
+	if got, want := StateDir(), filepath.Join("/xdgstate", "comms"); got != want {
 		t.Fatalf("StateDir() = %q, want %q", got, want)
 	}
 	t.Setenv("XDG_STATE_HOME", "")
-	if got, wantSuffix := StateDir(), filepath.Join(".local", "state", "save"); !strings.HasSuffix(got, wantSuffix) {
+	if got, wantSuffix := StateDir(), filepath.Join(".local", "state", "comms"); !strings.HasSuffix(got, wantSuffix) {
 		t.Fatalf("StateDir() = %q, want suffix %q", got, wantSuffix)
 	}
 }

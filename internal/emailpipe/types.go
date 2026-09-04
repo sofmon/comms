@@ -15,7 +15,7 @@
 // # The attachment policy
 //
 // Every attachment, inline part and extracted data: URI image is put to
-// save/internal/policy before its bytes are kept. The policy is
+// comms/internal/policy before its bytes are kept. The policy is
 // allowlist-only: bytes are stored iff the normalized final extension is
 // allowlisted AND the sniffed content type is permitted for that extension.
 // A part the policy refuses is NEVER dropped silently — it lands in
@@ -56,7 +56,7 @@ type EmailDoc struct {
 
 	// Skipped are the parts the policy refused, in the same deterministic
 	// order the parts were walked. Each carries Skipped = true, a SkipReason
-	// from save/internal/policy, its decoded Size, its SniffedType and the
+	// from comms/internal/policy, its decoded Size, its SniffedType and the
 	// fetch identity (PartKey) needed to retro-fetch it after a policy
 	// widening — but no Rel and no Content, because nothing was written.
 	//
@@ -123,7 +123,7 @@ type File struct {
 	Size int64
 
 	// SniffedType is the bare "type/subtype" detected from the content by
-	// save/internal/policy. It is ALWAYS populated, including on a skip:
+	// comms/internal/policy. It is ALWAYS populated, including on a skip:
 	// that is what makes the record honest and re-decidable without the
 	// bytes.
 	SniffedType string

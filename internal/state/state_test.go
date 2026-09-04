@@ -4,7 +4,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"save/internal/state"
+	"comms/internal/state"
 )
 
 // openTest opens a fresh store in a temp dir and closes it on cleanup.

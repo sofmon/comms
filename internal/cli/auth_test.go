@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-// TestResolveAuthLabels pins `save auth <provider> [label]` resolution: the
+// TestResolveAuthLabels pins `comms auth <provider> [label]` resolution: the
 // label may be omitted only when a single account of that kind exists, an
 // unknown label lists the valid ones, and --all fans out.
 func TestResolveAuthLabels(t *testing.T) {
@@ -37,7 +37,7 @@ func TestResolveAuthLabels(t *testing.T) {
 		{
 			name:  "several accounts and no label is an error listing them",
 			block: "google", labels: []string{"work", "personal"}, hasAll: true,
-			wantErr: []string{"several [[google]] accounts", "save auth google <label>", "--all", "work, personal"},
+			wantErr: []string{"several [[google]] accounts", "comms auth google <label>", "--all", "work, personal"},
 		},
 		{
 			name:  "--all selects every account in config order",
@@ -62,7 +62,7 @@ func TestResolveAuthLabels(t *testing.T) {
 		{
 			name:  "fastmail multi-account error does not advertise --all",
 			block: "fastmail", labels: []string{"fm", "work"},
-			wantErr: []string{"several [[fastmail]] accounts", "save auth fastmail <label>", "fm, work"},
+			wantErr: []string{"several [[fastmail]] accounts", "comms auth fastmail <label>", "fm, work"},
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

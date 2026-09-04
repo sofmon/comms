@@ -8,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	"save/internal/naming"
-	"save/internal/policy"
+	"comms/internal/naming"
+	"comms/internal/policy"
 )
 
 // Attachment-policy tests.
@@ -345,7 +345,7 @@ func TestRenderPolicyMacroOfficeByContent(t *testing.T) {
 }
 
 // TestRenderPolicyOverSizeCap: the per-attachment cap refuses the part and
-// records the exact byte count, so `save refetch` can re-decide it offline
+// records the exact byte count, so `comms refetch` can re-decide it offline
 // after the cap is raised.
 func TestRenderPolicyOverSizeCap(t *testing.T) {
 	big := append(pdfBytes(), bytes.Repeat([]byte("A"), 200<<10)...)
@@ -425,7 +425,7 @@ func TestRenderPolicyPerMessageBudget(t *testing.T) {
 }
 
 // TestRenderPolicyRunBudget: the run budget carries across messages via
-// Options.RunBytesSoFar, and it is a transient reason — `save refetch`
+// Options.RunBytesSoFar, and it is a transient reason — `comms refetch`
 // retries it regardless of the policy digest.
 func TestRenderPolicyRunBudget(t *testing.T) {
 	raw := message(t, part{ctype: "application/pdf", filename: "a.pdf", body: pdfBytes()})

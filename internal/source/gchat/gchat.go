@@ -34,14 +34,14 @@ import (
 	chat "google.golang.org/api/chat/v1"
 	drive "google.golang.org/api/drive/v3"
 
-	"save/internal/archive"
-	"save/internal/config"
-	"save/internal/naming"
-	"save/internal/policy"
-	"save/internal/ratelimit"
-	"save/internal/retry"
-	"save/internal/source"
-	"save/internal/state"
+	"comms/internal/archive"
+	"comms/internal/config"
+	"comms/internal/naming"
+	"comms/internal/policy"
+	"comms/internal/ratelimit"
+	"comms/internal/retry"
+	"comms/internal/source"
+	"comms/internal/state"
 )
 
 // limiterGlobalKey is the limiter key for calls not tied to one space

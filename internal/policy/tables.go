@@ -147,7 +147,7 @@ var defaultAllow = map[string][]string{
 
 	// ---- Nested mail -----------------------------------------------------
 	// Forwarded mail IS the correspondence this archive exists to keep.
-	// The note must say that save does NOT recurse: the nested message's own
+	// The note must say that comms does NOT recurse: the nested message's own
 	// attachments are neither extracted nor policy-checked, they ride along
 	// inside the file.
 	"eml": {"message/rfc822", "text/plain"},
@@ -283,7 +283,7 @@ func FlagGated(ext string) (flag string, gated bool) {
 }
 
 // HardDeniedExtensions returns every hard-denied extension, sorted. Used by
-// `save doctor` and by the config error message.
+// `comms doctor` and by the config error message.
 func HardDeniedExtensions() []string {
 	out := make([]string, 0, len(hardDenyMacOS)+len(hardDenyWindows))
 	for ext := range hardDenyMacOS {

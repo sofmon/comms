@@ -11,7 +11,7 @@ import (
 func TestTriageDefaults(t *testing.T) {
 	clearEnv(t)
 	cfgDir := t.TempDir()
-	t.Setenv("SAVE_CONFIG_DIR", cfgDir)
+	t.Setenv("COMMS_CONFIG_DIR", cfgDir)
 	cfg, err := Load(writeConfig(t, minimalValid))
 	if err != nil {
 		t.Fatalf("Load: %v", err)
@@ -36,7 +36,7 @@ func TestTriageDefaults(t *testing.T) {
 
 func TestTriageExplicitValues(t *testing.T) {
 	clearEnv(t)
-	t.Setenv("SAVE_CONFIG_DIR", t.TempDir())
+	t.Setenv("COMMS_CONFIG_DIR", t.TempDir())
 	home, _ := os.UserHomeDir()
 	cfg, err := Load(writeConfig(t, `
 [triage]
@@ -71,7 +71,7 @@ max_body_chars = 1200
 
 func TestTriageValidation(t *testing.T) {
 	clearEnv(t)
-	t.Setenv("SAVE_CONFIG_DIR", t.TempDir())
+	t.Setenv("COMMS_CONFIG_DIR", t.TempDir())
 	for name, tc := range map[string]struct{ toml, want string }{
 		"llm enabled without model": {"[triage.llm]\nenabled = true\n", "model is required"},
 		"in_daemon without enabled": {"[triage.llm]\nin_daemon = true\n", "in_daemon"},

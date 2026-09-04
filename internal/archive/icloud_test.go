@@ -11,9 +11,9 @@ import (
 	"testing"
 	"time"
 
-	"save/internal/emailpipe"
-	"save/internal/naming"
-	"save/internal/state"
+	"comms/internal/emailpipe"
+	"comms/internal/naming"
+	"comms/internal/state"
 )
 
 // --- helpers ---------------------------------------------------------------

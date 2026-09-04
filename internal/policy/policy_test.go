@@ -6,7 +6,7 @@ import (
 
 	"github.com/gabriel-vasile/mimetype"
 
-	"save/internal/naming"
+	"comms/internal/naming"
 )
 
 // decideCase is one row of the allow/deny table.
@@ -346,7 +346,7 @@ func TestSizeCaps(t *testing.T) {
 		v := p.Decide(Input{Name: "huge.exe", Content: append(exeBytes(), make([]byte, 9000)...)})
 		if v.Reason != ReasonNotAllowlistedExtension {
 			t.Fatalf("Reason = %q; a huge .exe must report not_allowlisted_extension, never over_size_cap — "+
-				"otherwise raising max_size would make `save refetch` fetch it", v.Reason)
+				"otherwise raising max_size would make `comms refetch` fetch it", v.Reason)
 		}
 	})
 	t.Run("zero caps mean unlimited", func(t *testing.T) {
@@ -543,7 +543,7 @@ func TestNewRejectsBadSettings(t *testing.T) {
 }
 
 // TestPermittedTypesAndAccessors covers the read-only surface downstream
-// callers use to render `save doctor` output.
+// callers use to render `comms doctor` output.
 func TestPermittedTypesAndAccessors(t *testing.T) {
 	p := Default()
 	if got := p.PermittedTypes("pdf"); len(got) != 1 || got[0] != "application/pdf" {
