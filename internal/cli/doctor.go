@@ -13,6 +13,7 @@ import (
 
 	chat "google.golang.org/api/chat/v1"
 	"google.golang.org/api/option"
+	people "google.golang.org/api/people/v1"
 
 	"github.com/spf13/cobra"
 
@@ -385,6 +386,9 @@ func (d *doctorReport) checkGoogleAccount(cfg *config.Config, acct config.Google
 	}
 	if acct.Chat {
 		kinds = append(kinds, state.SourceGChat)
+		if acct.ResolveChatNames {
+			kinds = append(kinds, "chat-names")
+		}
 	}
 	if acct.SendEmail {
 		kinds = append(kinds, "send-email")
@@ -450,12 +454,28 @@ func (d *doctorReport) checkGoogleAccount(cfg *config.Config, acct config.Google
 			d.bad("", "%s: %v", id, err)
 		} else {
 			lim := ratelimit.NewKeyed(chatPerSpacePerSecond, chatPerSpaceBurst, chatOverallPerSecond, chatOverallBurst)
+			var peopleOpt gchat.Option
+			if acct.ResolveChatNames {
+				peopleSvc, perr := people.NewService(ctx, option.WithTokenSource(ts))
+				if perr != nil {
+					d.bad("", "%s People API client: %v", id, perr)
+				} else {
+					peopleOpt = gchat.WithPeopleService(peopleSvc)
+				}
+			}
 			// Check() only probes spaces.list; no Drive service needed.
-			src := gchat.New(id, acct, nil, writer, lim, log, svc, nil)
+			src := gchat.New(id, acct, nil, writer, lim, log, svc, nil, peopleOpt)
 			if err := src.Check(ctx); err != nil {
 				d.bad("If this is a 403, a Workspace admin may be blocking this OAuth client\nfrom the Chat scopes — ask them to allowlist it.", "%s check failed: %v", id, err)
 			} else {
 				d.ok("%s reachable and authorized", id)
+			}
+			if acct.ResolveChatNames {
+				if err := src.CheckNameResolution(ctx); err != nil {
+					d.bad("Enable the People API in this account's Google Cloud project, then re-run doctor.", "%s display-name lookup failed: %v", id, err)
+				} else {
+					d.ok("%s People profile-name lookup reachable and authorized", id)
+				}
 			}
 		}
 	}

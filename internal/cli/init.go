@@ -83,7 +83,9 @@ Next steps:
   3. comms auth google <label>     # once per [[google]] account (or --all)
   4. comms auth fastmail <label>   # once per [[fastmail]] account
   5. To send, opt in with send_email/send_chat, re-authorize as described
-     in config.toml, create Markdown drafts under the configured send/, then:
+     in config.toml, then create and edit a provider-correct draft:
+       comms new gmail:<label>
+       comms new gmail:<label> --reply /path/to/archived-email.md
        comms send --dry-run
        comms send
   6. comms sync        # first backfill; Gmail can take hours and is resumable

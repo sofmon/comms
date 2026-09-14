@@ -195,6 +195,8 @@ func createDraft(ctx context.Context, c *connection, d outbox.Draft, from string
 		MailboxIDs: map[jmap.ID]bool{drafts: true},
 		Keywords:   map[string]bool{"$draft": true},
 		MessageID:  []string{strings.Trim(msgID, "<>")},
+		InReplyTo:  messageIDs(d.InReplyTo),
+		References: messageIDs(d.References...),
 		From:       []*jmapmail.Address{{Name: d.FromName, Email: from}},
 		To:         addresses(d.To),
 		CC:         addresses(d.CC),
@@ -263,6 +265,16 @@ func submit(ctx context.Context, c *connection, emailID, identityID jmap.ID, box
 		return "", fmt.Errorf("fastmail: submission response has no id")
 	}
 	return created.ID, nil
+}
+
+func messageIDs(ids ...string) []string {
+	out := make([]string, 0, len(ids))
+	for _, id := range ids {
+		if id = strings.Trim(id, "<>"); id != "" {
+			out = append(out, id)
+		}
+	}
+	return out
 }
 
 func addresses(in []outbox.Address) []*jmapmail.Address {

@@ -15,6 +15,7 @@ import (
 
 	"golang.org/x/oauth2"
 	chat "google.golang.org/api/chat/v1"
+	people "google.golang.org/api/people/v1"
 
 	"comms/internal/archive"
 	"comms/internal/config"
@@ -136,13 +137,14 @@ func writeGoogleCreds(t *testing.T, clientFile, tokenFile string, scopes []strin
 }
 
 func TestGoogleScopesIncludeOutboundAndDeduplicateReads(t *testing.T) {
-	got := googleScopes(config.GoogleAccount{Gmail: true, Chat: true, SendEmail: true, SendChat: true})
+	got := googleScopes(config.GoogleAccount{Gmail: true, Chat: true, SendEmail: true, SendChat: true, ResolveChatNames: true})
 	want := []string{
 		"https://www.googleapis.com/auth/gmail.readonly",
 		"https://www.googleapis.com/auth/gmail.compose",
 		chat.ChatSpacesReadonlyScope,
 		chat.ChatMessagesReadonlyScope,
 		chat.ChatMembershipsReadonlyScope,
+		people.DirectoryReadonlyScope,
 		chat.ChatMessagesCreateScope,
 	}
 	if !slices.Equal(got, want) {

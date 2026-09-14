@@ -32,7 +32,7 @@ import (
 // and an upgraded one end with byte-for-byte the same schema: each change to
 // the schema is written exactly once, as a step, never also folded back into
 // the base DDL.
-const schemaVersion = 3
+const schemaVersion = 4
 
 // Well-known meta keys.
 const (
@@ -315,6 +315,7 @@ func schemaSQL() string {
 var migrations = map[int]func() string{
 	2: schemaV2SQL,
 	3: schemaV3SQL,
+	4: schemaV4SQL,
 }
 
 // schemaV2SQL is the noise-triage step: every email note gets a disposition
@@ -389,6 +390,26 @@ CREATE TABLE outgoing_messages (
   archived_at      TEXT
 );
 CREATE INDEX idx_outgoing_status ON outgoing_messages(status, prepared_at);
+`
+}
+
+// schemaV4SQL adds account-scoped Google Chat profile names. Chat message
+// rows keep the canonical users/{id}; this cache is only a display projection.
+// Every existing day is dirtied once so the same migration also adds stable
+// per-message block identifiers to archives without re-downloading messages.
+func schemaV4SQL() string {
+	return `
+CREATE TABLE chat_people (
+  source       TEXT NOT NULL,
+  user_id      TEXT NOT NULL,
+  display_name TEXT,
+  name_source  TEXT NOT NULL CHECK (name_source IN ('people', 'override', 'unresolved')),
+  updated_at   TEXT NOT NULL,
+  PRIMARY KEY (source, user_id)
+);
+CREATE INDEX idx_chat_people_refresh ON chat_people(source, name_source, updated_at);
+
+UPDATE chat_day_files SET dirty = 1, dirty_seq = dirty_seq + 1;
 `
 }
 

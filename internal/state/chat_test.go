@@ -616,3 +616,88 @@ func TestChatMembers(t *testing.T) {
 		t.Fatal("member cache leaked across accounts")
 	}
 }
+
+func TestChatPeopleNames(t *testing.T) {
+	db := openTest(t)
+	ctx := context.Background()
+	registerSpaceFor(t, db, instA)
+	registerSpaceFor(t, db, instB)
+	ts := time.Date(2026, 8, 7, 10, 0, 0, 0, time.UTC)
+	for _, source := range []string{instA, instB} {
+		if err := db.ApplyChatPage(ctx, state.ChatPage{
+			Source: source, Space: testSpace,
+			Messages: []state.ChatMessage{chatMsg("m1", ts, "2026-08-07")},
+		}); err != nil {
+			t.Fatalf("ApplyChatPage(%s): %v", source, err)
+		}
+	}
+
+	markClean := func(source string) {
+		t.Helper()
+		files, err := db.DirtyDayFiles(source)
+		if err != nil || len(files) != 1 {
+			t.Fatalf("DirtyDayFiles(%s) = %+v, %v; want one", source, files, err)
+		}
+		if err := db.MarkDayRendered(source, testSpace, "2026-08-07", files[0].DirtySeq, "hash"); err != nil {
+			t.Fatalf("MarkDayRendered(%s): %v", source, err)
+		}
+	}
+	markClean(instA)
+	markClean(instB)
+
+	ids, err := db.ChatPeopleDue(instA, time.Now(), time.Now())
+	if err != nil || len(ids) != 1 || ids[0] != "users/1" {
+		t.Fatalf("ChatPeopleDue = %v, %v; want users/1", ids, err)
+	}
+	changed, err := db.SetChatPersonFromPeople(instA, "users/1", "Jane Doe")
+	if err != nil || !changed {
+		t.Fatalf("SetChatPersonFromPeople = %v, %v; want changed", changed, err)
+	}
+	if name, ok, err := db.GetChatPersonName(instA, "users/1"); err != nil || !ok || name != "Jane Doe" {
+		t.Fatalf("GetChatPersonName(A) = %q, %v, %v", name, ok, err)
+	}
+	if _, ok, err := db.GetChatPersonName(instB, "users/1"); err != nil || ok {
+		t.Fatalf("People name leaked across accounts: ok=%v err=%v", ok, err)
+	}
+	if dirty, _ := db.DirtyDayFiles(instA); len(dirty) != 1 {
+		t.Fatalf("name change dirtied %d days, want one", len(dirty))
+	}
+	if dirty, _ := db.DirtyDayFiles(instB); len(dirty) != 0 {
+		t.Fatalf("name change for A dirtied B: %+v", dirty)
+	}
+	markClean(instA)
+
+	changedCount, err := db.SyncChatNameOverrides(instA, map[string]string{"users/1": "J. Doe"})
+	if err != nil || changedCount != 1 {
+		t.Fatalf("SyncChatNameOverrides = %d, %v; want one change", changedCount, err)
+	}
+	if changed, err := db.SetChatPersonFromPeople(instA, "users/1", "People Name"); err != nil || changed {
+		t.Fatalf("People result displaced override: changed=%v err=%v", changed, err)
+	}
+	if name, ok, _ := db.GetChatPersonName(instA, "users/1"); !ok || name != "J. Doe" {
+		t.Fatalf("override did not win: %q, %v", name, ok)
+	}
+	markClean(instA)
+
+	changedCount, err = db.SyncChatNameOverrides(instA, nil)
+	if err != nil || changedCount != 1 {
+		t.Fatalf("remove override = %d, %v; want one change", changedCount, err)
+	}
+	if _, ok, _ := db.GetChatPersonName(instA, "users/1"); ok {
+		t.Fatal("removed override remained visible")
+	}
+	if dirty, _ := db.DirtyDayFiles(instA); len(dirty) != 1 {
+		t.Fatalf("override removal dirtied %d days, want one", len(dirty))
+	}
+
+	if changed, err := db.SetChatPersonFromPeople(instA, "users/1", ""); err != nil || changed {
+		t.Fatalf("negative cache = %v, %v; want no effective-name change", changed, err)
+	}
+	now := time.Now()
+	if ids, err := db.ChatPeopleDue(instA, now.Add(-31*24*time.Hour), now.Add(-time.Hour)); err != nil || len(ids) != 0 {
+		t.Fatalf("fresh unresolved profile is due: %v, %v", ids, err)
+	}
+	if ids, err := db.ChatPeopleDue(instA, now.Add(time.Hour), now.Add(time.Hour)); err != nil || len(ids) != 1 {
+		t.Fatalf("stale unresolved profile not due: %v, %v", ids, err)
+	}
+}

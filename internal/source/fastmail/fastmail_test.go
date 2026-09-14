@@ -179,7 +179,7 @@ func testConn(f *fakeAPI) *conn { return &conn{api: f, accountID: "acct", maxCal
 func testBoxes() *mailboxes {
 	return &mailboxes{
 		names: map[jmap.ID]string{
-			"mb-in": "Inbox", "mb-junk": "Junk Mail", "mb-trash": "Trash", "mb-arc": "Archive",
+			"mb-in": "Inbox", "mb-junk": "Junk Mail", "mb-trash": "Trash", "mb-arc": "Archive", "mb-sent": "Sent",
 		},
 		junkTrash: map[jmap.ID]bool{"mb-junk": true, "mb-trash": true},
 		exclude:   []jmap.ID{"mb-junk", "mb-trash"},
@@ -513,6 +513,7 @@ func TestInScope(t *testing.T) {
 		want bool
 	}{
 		{name: "inbox only", ids: map[jmap.ID]bool{"in": true}, want: true},
+		{name: "sent only", ids: map[jmap.ID]bool{"sent": true}, want: true},
 		{name: "junk only", ids: map[jmap.ID]bool{"junk": true}, want: false},
 		{name: "trash only", ids: map[jmap.ID]bool{"trash": true}, want: false},
 		{name: "junk and trash", ids: map[jmap.ID]bool{"junk": true, "trash": true}, want: false},
@@ -551,7 +552,8 @@ func TestBackfillPagingAndPromotion(t *testing.T) {
 	boxes := testBoxes()
 
 	e1 := testEmail("e1", "b1", "mb-in")
-	e2 := testEmail("e2", "b2", "mb-arc")
+	// Sent mail is deliberately part of the backfill, not just Inbox mail.
+	e2 := testEmail("e2", "b2", "mb-sent")
 	e2.Subject = "Totally Different Guess"
 	e3 := testEmail("e3", "b3", "mb-in")
 

@@ -16,9 +16,11 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
+	"unicode"
 
 	"gopkg.in/yaml.v3"
 
@@ -56,6 +58,9 @@ type Draft struct {
 	ReplyTo     *Address
 	FromName    string
 	Subject     string
+	InReplyTo   string
+	References  []string
+	ThreadID    string // provider thread hint; currently used by Gmail replies
 	Space       string
 	Thread      string
 	Body        string
@@ -107,16 +112,19 @@ func (s *stringList) UnmarshalYAML(n *yaml.Node) error {
 }
 
 type metadata struct {
-	Type     Kind       `yaml:"type"`
-	Account  string     `yaml:"account"`
-	To       stringList `yaml:"to"`
-	CC       stringList `yaml:"cc"`
-	BCC      stringList `yaml:"bcc"`
-	ReplyTo  string     `yaml:"reply_to"`
-	FromName string     `yaml:"from_name"`
-	Subject  string     `yaml:"subject"`
-	Space    string     `yaml:"space"`
-	Thread   string     `yaml:"thread"`
+	Type       Kind       `yaml:"type"`
+	Account    string     `yaml:"account"`
+	To         stringList `yaml:"to"`
+	CC         stringList `yaml:"cc"`
+	BCC        stringList `yaml:"bcc"`
+	ReplyTo    string     `yaml:"reply_to"`
+	FromName   string     `yaml:"from_name"`
+	Subject    string     `yaml:"subject"`
+	InReplyTo  string     `yaml:"in_reply_to"`
+	References stringList `yaml:"references"`
+	ThreadID   string     `yaml:"thread_id"`
+	Space      string     `yaml:"space"`
+	Thread     string     `yaml:"thread"`
 }
 
 // LoadDir recursively loads regular .md files in deterministic path order.
@@ -205,8 +213,22 @@ func Parse(rel string, data []byte) (Draft, error) {
 	}
 	meta.Account = strings.TrimSpace(meta.Account)
 	meta.Subject = strings.TrimSpace(meta.Subject)
+	meta.InReplyTo = strings.TrimSpace(meta.InReplyTo)
+	meta.ThreadID = strings.TrimSpace(meta.ThreadID)
 	meta.Space = strings.TrimSpace(meta.Space)
 	meta.Thread = strings.TrimSpace(meta.Thread)
+	for _, field := range []struct {
+		name, value string
+	}{
+		{"account", meta.Account},
+		{"subject", meta.Subject},
+		{"from_name", strings.TrimSpace(meta.FromName)},
+		{"thread_id", meta.ThreadID},
+	} {
+		if strings.ContainsAny(field.value, "\r\n") {
+			return Draft{}, fmt.Errorf("frontmatter: %s must be a single line", field.name)
+		}
+	}
 	body = strings.TrimRight(body, "\r\n")
 	if meta.Account == "" {
 		return Draft{}, errors.New("frontmatter: account is required")
@@ -215,7 +237,7 @@ func Parse(rel string, data []byte) (Draft, error) {
 		return Draft{}, errors.New("message body is empty")
 	}
 
-	d := Draft{RelPath: rel, Kind: meta.Type, Account: meta.Account, FromName: strings.TrimSpace(meta.FromName), Subject: meta.Subject, Space: meta.Space, Thread: meta.Thread, Body: body, Raw: append([]byte(nil), data...)}
+	d := Draft{RelPath: rel, Kind: meta.Type, Account: meta.Account, FromName: strings.TrimSpace(meta.FromName), Subject: meta.Subject, ThreadID: meta.ThreadID, Space: meta.Space, Thread: meta.Thread, Body: body, Raw: append([]byte(nil), data...)}
 	d.To, err = parseAddresses("to", meta.To)
 	if err != nil {
 		return Draft{}, err
@@ -235,6 +257,19 @@ func Parse(rel string, data []byte) (Draft, error) {
 		}
 		d.ReplyTo = &list[0]
 	}
+	if meta.InReplyTo != "" {
+		d.InReplyTo, err = NormalizeMessageID(meta.InReplyTo)
+		if err != nil {
+			return Draft{}, fmt.Errorf("frontmatter: in_reply_to: %w", err)
+		}
+	}
+	for _, ref := range meta.References {
+		id, err := NormalizeMessageID(ref)
+		if err != nil {
+			return Draft{}, fmt.Errorf("frontmatter: references: %w", err)
+		}
+		d.References = append(d.References, id)
+	}
 
 	switch d.Kind {
 	case KindEmail:
@@ -248,8 +283,8 @@ func Parse(rel string, data []byte) (Draft, error) {
 			return Draft{}, errors.New("email must not set space or thread")
 		}
 	case KindChat:
-		if len(d.To)+len(d.CC)+len(d.BCC) != 0 || d.ReplyTo != nil || d.FromName != "" || d.Subject != "" {
-			return Draft{}, errors.New("chat must not set email-only fields (to, cc, bcc, reply_to, from_name, subject)")
+		if len(d.To)+len(d.CC)+len(d.BCC) != 0 || d.ReplyTo != nil || d.FromName != "" || d.Subject != "" || d.InReplyTo != "" || len(d.References) != 0 || d.ThreadID != "" {
+			return Draft{}, errors.New("chat must not set email-only fields (to, cc, bcc, reply_to, from_name, subject, in_reply_to, references, thread_id)")
 		}
 		if !validSpace(d.Space) {
 			return Draft{}, fmt.Errorf("chat space %q must have the form spaces/<id>", d.Space)
@@ -269,6 +304,93 @@ func Parse(rel string, data []byte) (Draft, error) {
 	keySum := sha256.Sum256(append(append([]byte(rel), 0), data...))
 	d.MessageKey = hex.EncodeToString(keySum[:])
 	return d, nil
+}
+
+// NormalizeMessageID validates an RFC 5322 Message-ID in the bracketed form
+// written to archived email frontmatter. It accepts printable non-space id
+// characters while refusing header injection.
+func NormalizeMessageID(raw string) (string, error) {
+	id := strings.TrimSpace(raw)
+	if len(id) < 3 || id[0] != 60 || id[len(id)-1] != 62 {
+		return "", fmt.Errorf("message id %q must be enclosed in angle brackets", raw)
+	}
+	inner := id[1 : len(id)-1]
+	invalid := strings.IndexFunc(inner, func(r rune) bool {
+		return r == 60 || r == 62 || unicode.IsSpace(r) || unicode.IsControl(r)
+	})
+	if inner == "" || invalid >= 0 {
+		return "", fmt.Errorf("message id %q contains invalid characters", raw)
+	}
+	return id, nil
+}
+
+// Template describes the editable frontmatter generated by comms new.
+// Required delivery fields may be empty on purpose: a fresh template stays
+// invalid until the operator edits it, so an untouched file cannot be sent.
+type Template struct {
+	Kind       Kind
+	Account    string
+	To         []string
+	Subject    string
+	InReplyTo  string
+	References []string
+	ThreadID   string
+}
+
+// RenderTemplate emits only field names accepted by Parse. Values use JSON
+// string quoting, which is also valid YAML double-quoted scalar syntax.
+func RenderTemplate(t Template) ([]byte, error) {
+	if strings.TrimSpace(t.Account) == "" || strings.ContainsAny(t.Account, "\r\n") {
+		return nil, errors.New("template account must be a non-empty single line")
+	}
+	q := strconv.Quote
+	var b strings.Builder
+	b.WriteString("---\n")
+	fmt.Fprintf(&b, "type: %s\naccount: %s\n", t.Kind, q(t.Account))
+	switch t.Kind {
+	case KindEmail:
+		if len(t.To) == 0 {
+			b.WriteString("to: \"\"\n")
+		} else if len(t.To) == 1 {
+			fmt.Fprintf(&b, "to: %s\n", q(t.To[0]))
+		} else {
+			b.WriteString("to:\n")
+			for _, address := range t.To {
+				fmt.Fprintf(&b, "  - %s\n", q(address))
+			}
+		}
+		fmt.Fprintf(&b, "subject: %s\n", q(t.Subject))
+		if t.InReplyTo != "" {
+			id, err := NormalizeMessageID(t.InReplyTo)
+			if err != nil {
+				return nil, err
+			}
+			fmt.Fprintf(&b, "in_reply_to: %s\n", q(id))
+		}
+		if len(t.References) > 0 {
+			b.WriteString("references:\n")
+			for _, ref := range t.References {
+				id, err := NormalizeMessageID(ref)
+				if err != nil {
+					return nil, err
+				}
+				fmt.Fprintf(&b, "  - %s\n", q(id))
+			}
+		}
+		if t.ThreadID != "" {
+			if strings.ContainsAny(t.ThreadID, "\r\n") {
+				return nil, errors.New("template thread_id must be a single line")
+			}
+			fmt.Fprintf(&b, "thread_id: %s\n", q(t.ThreadID))
+		}
+		b.WriteString("# cc:\n# bcc:\n# from_name:\n# reply_to:\n")
+	case KindChat:
+		b.WriteString("space: \"\"\n# thread:\n")
+	default:
+		return nil, fmt.Errorf("template type must be %q or %q, got %q", KindEmail, KindChat, t.Kind)
+	}
+	b.WriteString("---\n\n")
+	return []byte(b.String()), nil
 }
 
 func splitFrontmatter(data []byte) ([]byte, string, error) {

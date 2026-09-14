@@ -15,12 +15,13 @@ import (
 )
 
 type fakeAPI struct {
-	sent        *gmailv1.Message
-	draft       *gmailv1.Draft
-	createdRaw  string
-	createCalls int
-	sendCalls   int
-	err         error
+	sent          *gmailv1.Message
+	draft         *gmailv1.Draft
+	createdRaw    string
+	createdThread string
+	createCalls   int
+	sendCalls     int
+	err           error
 }
 
 func (f *fakeAPI) findSent(context.Context, string) (*gmailv1.Message, error) {
@@ -30,6 +31,7 @@ func (f *fakeAPI) findDraft(context.Context, string) (*gmailv1.Draft, error) { r
 func (f *fakeAPI) createDraft(_ context.Context, d *gmailv1.Draft) (*gmailv1.Draft, error) {
 	f.createCalls++
 	f.createdRaw = d.Message.Raw
+	f.createdThread = d.Message.ThreadId
 	return &gmailv1.Draft{Id: "draft-1"}, nil
 }
 func (f *fakeAPI) sendDraft(_ context.Context, d *gmailv1.Draft) (*gmailv1.Message, error) {
@@ -49,6 +51,11 @@ to: Jane Example <jane@example.com>
 cc: boss@example.net
 subject: Héllo
 from_name: Sender Name
+in_reply_to: <original@example.net>
+references:
+  - <older@example.net>
+  - <original@example.net>
+thread_id: gmail-thread-123
 ---
 Hello,
 
@@ -68,7 +75,7 @@ func TestSendCreatesRecoverableDraftThenSends(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if receipt.ProviderID != "message-1" || api.createCalls != 1 || api.sendCalls != 1 {
+	if receipt.ProviderID != "message-1" || api.createCalls != 1 || api.sendCalls != 1 || api.createdThread != "gmail-thread-123" {
 		t.Fatalf("receipt=%+v creates=%d sends=%d", receipt, api.createCalls, api.sendCalls)
 	}
 	raw, err := base64.RawURLEncoding.DecodeString(api.createdRaw)
@@ -81,6 +88,8 @@ func TestSendCreatesRecoverableDraftThenSends(t *testing.T) {
 		"To: \"Jane Example\" <jane@example.com>\r\n",
 		"Cc: <boss@example.net>\r\n",
 		"Subject: =?utf-8?q?H=C3=A9llo?=\r\n",
+		"In-Reply-To: <original@example.net>\r\n",
+		"References: <older@example.net> <original@example.net>\r\n",
 		"Message-ID: <comms.",
 		"Hello,\r\n\r\nWorld.\r\n",
 	} {

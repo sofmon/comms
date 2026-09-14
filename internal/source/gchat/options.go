@@ -1,6 +1,8 @@
 package gchat
 
 import (
+	people "google.golang.org/api/people/v1"
+
 	"comms/internal/policy"
 	"comms/internal/source"
 )
@@ -15,7 +17,8 @@ import (
 type Option func(*options)
 
 type options struct {
-	pol *policy.Policy
+	pol    *policy.Policy
+	people peopleAPI
 
 	// freeSpace reports the bytes free on the archive volume, or <= 0 for
 	// "unknown" (which disables the free-space floor, per policy.Input).
@@ -36,6 +39,21 @@ func newOptions(opts []Option) options {
 		o.freeSpace = defaultFreeSpace
 	}
 	return o
+}
+
+// WithPeopleService enables optional users/{id} to profile-name enrichment.
+// The service must use the same account's OAuth token as the Chat service.
+func WithPeopleService(svc *people.Service) Option {
+	return func(o *options) {
+		if svc != nil {
+			o.people = &realPeopleAPI{svc: svc}
+		}
+	}
+}
+
+// withPeopleAPI is the test seam for profile-name enrichment.
+func withPeopleAPI(api peopleAPI) Option {
+	return func(o *options) { o.people = api }
 }
 
 // WithPolicy sets the attachment storage policy. Chat is the one source where

@@ -218,7 +218,7 @@ func TestBackfillArchivesInScopeAndPromotes(t *testing.T) {
 			testMsg("m1", "invoice july", "INBOX", "Label_1"),
 			testMsg("m2", "old hangout", "CHAT"),
 			testMsg("m3", "unsent draft", "DRAFT"),
-			testMsg("m4", "second message", "INBOX"),
+			testMsg("m4", "sent message", "SENT"),
 		),
 		historyFn: emptyHistory(1500),
 	}
@@ -317,7 +317,7 @@ func TestIncrementalAddRescueDeleteAndDedupe(t *testing.T) {
 		}),
 		getFn: msgSet(
 			testMsg("m1", "first", "INBOX"),
-			testMsg("m2", "second", "INBOX"),
+			testMsg("m2", "sent second", "SENT"),
 			testMsg("m3", "rescued from spam", "INBOX"), // current labels: no longer SPAM
 			testMsg("m7", "still junk", "SPAM"),         // rescue candidate that is still spam
 		),

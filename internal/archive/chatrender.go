@@ -2,6 +2,7 @@ package archive
 
 import (
 	"bytes"
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"path"
@@ -271,7 +272,7 @@ func renderChatMessage(buf *bytes.Buffer, m state.ChatMessage, rows []state.Atta
 	if m.Edited && !m.Deleted {
 		buf.WriteString(" _(edited)_")
 	}
-	buf.WriteString("\n")
+	fmt.Fprintf(buf, " ^%s\n", chatMessageBlockID(m.Name))
 
 	if m.Deleted {
 		buf.WriteString("\n_(message deleted)_\n")
@@ -413,6 +414,35 @@ func mdInline(s string) string {
 		b.WriteRune(r)
 	}
 	return b.String()
+}
+
+// chatMessageBlockID returns an Obsidian-safe, deterministic block id derived
+// from the immutable Google message resource name. The readable message token
+// is normalized to Latin letters, digits and dashes; a hash of the full name
+// prevents normalization or truncation collisions within the vault.
+func chatMessageBlockID(messageName string) string {
+	token := strings.ToLower(path.Base(messageName))
+	var b strings.Builder
+	lastDash := false
+	for _, r := range token {
+		valid := r >= 'a' && r <= 'z' || r >= '0' && r <= '9'
+		if valid {
+			b.WriteRune(r)
+			lastDash = false
+		} else if !lastDash && b.Len() > 0 {
+			b.WriteByte('-')
+			lastDash = true
+		}
+	}
+	readable := strings.Trim(b.String(), "-")
+	if readable == "" {
+		readable = "message"
+	}
+	if len(readable) > 48 {
+		readable = strings.TrimRight(readable[:48], "-")
+	}
+	sum := sha256.Sum256([]byte(messageName))
+	return fmt.Sprintf("gchat-%s-%x", readable, sum[:8])
 }
 
 // chatHeaderLine matches a body line that would parse exactly like the

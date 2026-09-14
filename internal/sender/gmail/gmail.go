@@ -102,7 +102,8 @@ func (s *Sender) Send(ctx context.Context, d outbox.Draft, preparedAt time.Time)
 			return outbox.Receipt{}, err
 		}
 		draft, err = s.api.createDraft(ctx, &gmailv1.Draft{Message: &gmailv1.Message{
-			Raw: base64.RawURLEncoding.EncodeToString(raw),
+			Raw:      base64.RawURLEncoding.EncodeToString(raw),
+			ThreadId: d.ThreadID,
 		}})
 		if err != nil {
 			return outbox.Receipt{}, fmt.Errorf("gmail: create draft: %w", err)
@@ -145,6 +146,12 @@ func renderMIME(d outbox.Draft, from, msgID string, at time.Time) ([]byte, error
 		writeHeader("Reply-To", d.ReplyTo.String())
 	}
 	writeHeader("Subject", mime.QEncoding.Encode("utf-8", d.Subject))
+	if d.InReplyTo != "" {
+		writeHeader("In-Reply-To", d.InReplyTo)
+	}
+	if len(d.References) > 0 {
+		writeHeader("References", strings.Join(d.References, " "))
+	}
 	writeHeader("Date", at.Format(time.RFC1123Z))
 	writeHeader("Message-ID", msgID)
 	writeHeader("MIME-Version", "1.0")

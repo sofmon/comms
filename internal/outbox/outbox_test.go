@@ -1,6 +1,7 @@
 package outbox
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
 	"strings"
@@ -92,6 +93,9 @@ func TestParseRejectsUnsafeOrAmbiguousDrafts(t *testing.T) {
 		{"empty body", "x.md", strings.Replace(base, "body\n", "\n", 1), "body is empty"},
 		{"chat email fields", "x.md", "---\ntype: chat\naccount: work\nspace: spaces/A\nsubject: nope\n---\nhello\n", "email-only"},
 		{"bad space", "x.md", "---\ntype: chat\naccount: work\nspace: room/A\n---\nhello\n", "spaces/<id>"},
+		{"bad reply id", "x.md", "---\ntype: email\naccount: work\nto: you@example.com\nsubject: Hi\nin_reply_to: nope\n---\nhello\n", "angle brackets"},
+		{"multiline subject", "x.md", "---\ntype: email\naccount: work\nto: you@example.com\nsubject: \"Hi\\nBcc: bad@example.com\"\n---\nhello\n", "single line"},
+		{"chat reply metadata", "x.md", "---\ntype: chat\naccount: work\nspace: spaces/A\nin_reply_to: <x@example.com>\n---\nhello\n", "email-only"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -99,6 +103,73 @@ func TestParseRejectsUnsafeOrAmbiguousDrafts(t *testing.T) {
 			if err == nil || !strings.Contains(err.Error(), tt.want) {
 				t.Fatalf("error = %v, want substring %q", err, tt.want)
 			}
+		})
+	}
+}
+
+func TestRenderTemplateRoundTripsThroughParser(t *testing.T) {
+	tests := []struct {
+		name  string
+		spec  Template
+		ready func([]byte) []byte
+		check func(*testing.T, Draft)
+	}{
+		{
+			name: "new email",
+			spec: Template{Kind: KindEmail, Account: "work"},
+			ready: func(b []byte) []byte {
+				b = bytes.Replace(b, []byte(`to: ""`), []byte(`to: "Jane Example <jane@example.com>"`), 1)
+				b = bytes.Replace(b, []byte(`subject: ""`), []byte(`subject: "Hello"`), 1)
+				return append(b, []byte("Message body.\n")...)
+			},
+			check: func(t *testing.T, d Draft) {
+				if d.Kind != KindEmail || d.Account != "work" || d.Subject != "Hello" || d.To[0].Email != "jane@example.com" {
+					t.Fatalf("email draft = %+v", d)
+				}
+			},
+		},
+		{
+			name: "reply email",
+			spec: Template{
+				Kind: KindEmail, Account: "work", To: []string{"Jane Example <jane@example.com>"},
+				Subject: "Re: Project", InReplyTo: "<original@example.com>",
+				References: []string{"<older@example.com>", "<original@example.com>"}, ThreadID: "gmail-thread",
+			},
+			ready: func(b []byte) []byte { return append(b, []byte("Reply body.\n")...) },
+			check: func(t *testing.T, d Draft) {
+				if d.InReplyTo != "<original@example.com>" || len(d.References) != 2 || d.ThreadID != "gmail-thread" {
+					t.Fatalf("reply metadata = %+v", d)
+				}
+			},
+		},
+		{
+			name: "new chat",
+			spec: Template{Kind: KindChat, Account: "work"},
+			ready: func(b []byte) []byte {
+				b = bytes.Replace(b, []byte(`space: ""`), []byte(`space: "spaces/AAA"`), 1)
+				return append(b, []byte("Chat body.\n")...)
+			},
+			check: func(t *testing.T, d Draft) {
+				if d.Kind != KindChat || d.Space != "spaces/AAA" {
+					t.Fatalf("chat draft = %+v", d)
+				}
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			raw, err := RenderTemplate(tt.spec)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := Parse("draft.md", raw); err == nil {
+				t.Fatal("untouched template is sendable")
+			}
+			d, err := Parse("draft.md", tt.ready(raw))
+			if err != nil {
+				t.Fatalf("edited generated template does not parse: %v\n%s", err, raw)
+			}
+			tt.check(t, d)
 		})
 	}
 }

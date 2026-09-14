@@ -64,7 +64,14 @@ func (c *Connector) renderDay(f state.DayFile, memberCache map[string]map[string
 		if name, hit := cache[userID]; hit {
 			return name
 		}
-		name, _, merr := c.db.GetMember(c.src, f.Space, userID)
+		if name := c.acct.ChatNameOverrides[userID]; name != "" {
+			cache[userID] = name
+			return name
+		}
+		name, ok, merr := c.db.GetChatPersonName(c.src, userID)
+		if merr == nil && !ok {
+			name, _, merr = c.db.GetMember(c.src, f.Space, userID)
+		}
 		if merr != nil {
 			c.log.Warn("gchat: member lookup failed", "space", f.Space, "user", userID, "err", merr)
 			name = ""

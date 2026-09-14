@@ -15,6 +15,7 @@ import (
 	chat "google.golang.org/api/chat/v1"
 	drive "google.golang.org/api/drive/v3"
 	"google.golang.org/api/option"
+	people "google.golang.org/api/people/v1"
 
 	"golang.org/x/oauth2"
 
@@ -286,6 +287,9 @@ func googleScopes(acct config.GoogleAccount) []string {
 		add(chat.ChatSpacesReadonlyScope)
 		add(chat.ChatMessagesReadonlyScope)
 		add(chat.ChatMembershipsReadonlyScope)
+		if acct.ResolveChatNames {
+			add(people.DirectoryReadonlyScope)
+		}
 		// Drive mirroring is a Chat-only feature: the connector fetches
 		// DRIVE_FILE attachments it finds in messages.
 		if acct.MirrorDriveFiles {
@@ -374,6 +378,14 @@ func (a *app) buildSources(ctx context.Context, only []string) ([]boundSource, e
 			if err != nil {
 				return nil, fmt.Errorf("%s: %w", in.ID, err)
 			}
+			var peopleOpt gchat.Option
+			if acct.ResolveChatNames {
+				peopleSvc, perr := people.NewService(ctx, option.WithTokenSource(ts))
+				if perr != nil {
+					return nil, fmt.Errorf("%s: people: %w", in.ID, perr)
+				}
+				peopleOpt = gchat.WithPeopleService(peopleSvc)
+			}
 			var driveSvc *drive.Service
 			if acct.MirrorDriveFiles {
 				driveSvc, err = drive.NewService(ctx, option.WithTokenSource(ts))
@@ -384,7 +396,7 @@ func (a *app) buildSources(ctx context.Context, only []string) ([]boundSource, e
 			if chatLimiter == nil {
 				chatLimiter = ratelimit.NewKeyed(chatPerSpacePerSecond, chatPerSpaceBurst, chatOverallPerSecond, chatOverallBurst)
 			}
-			out = append(out, boundSource{inst: in, conn: gchat.New(in.ID, acct, a.db, a.writer, chatLimiter, a.log, svc, driveSvc, gchat.WithPolicy(a.policy))})
+			out = append(out, boundSource{inst: in, conn: gchat.New(in.ID, acct, a.db, a.writer, chatLimiter, a.log, svc, driveSvc, gchat.WithPolicy(a.policy), peopleOpt)})
 
 		case state.SourceFastmail:
 			acct, ok := a.cfg.FastMailByLabel(in.Label)
@@ -698,7 +710,18 @@ func (a *app) renderChatDay(f state.DayFile, memberCache map[string]map[string]s
 		if name, hit := cache[userID]; hit {
 			return name
 		}
-		name, _, merr := a.db.GetMember(f.Source, f.Space, userID)
+		if _, label, valid := state.SplitInstance(f.Source); valid && a.cfg != nil {
+			if acct, found := a.cfg.GoogleByLabel(label); found {
+				if name := acct.ChatNameOverrides[userID]; name != "" {
+					cache[userID] = name
+					return name
+				}
+			}
+		}
+		name, ok, merr := a.db.GetChatPersonName(f.Source, userID)
+		if merr == nil && !ok {
+			name, _, merr = a.db.GetMember(f.Source, f.Space, userID)
+		}
 		if merr != nil {
 			a.log.Warn("member lookup failed", "source", f.Source, "space", f.Space, "user", userID, "err", merr)
 			name = ""

@@ -109,31 +109,31 @@ timezone: Europe/Amsterdam
 
 # Team Platform — 2026-08-07
 
-**Jane Doe** (00:02)
+**Jane Doe** (00:02) ^ANCHOR_M1
 
 Good morning.
 
 ## 00:05 — thread started 2026-08-06 23:58 (continued)
 
-**Bob Petrov** (00:05)
+**Bob Petrov** (00:05) ^ANCHOR_M2
 
 Continuing from last night.
 
 ## 09:15 — thread started by Jane Doe
 
-**Jane Doe** (09:15)
+**Jane Doe** (09:15) ^ANCHOR_M3
 
 Thread opener.
 
-**users/999** (09:17) _(edited)_
+**users/999** (09:17) _(edited)_ ^ANCHOR_M4
 
 Edited reply.
 
-**Bob Petrov** (10:00)
+**Bob Petrov** (10:00) ^ANCHOR_M5
 
 _(message deleted)_
 
-**Jane Doe** (11:30)
+**Jane Doe** (11:30) ^ANCHOR_M6
 
 Here are the files.
 
@@ -141,6 +141,9 @@ Here are the files.
 - _[attachment unavailable: photo.png]_
 - [Design doc](<https://drive.google.com/open?id=abc123>) (Drive file, not mirrored)
 `, "STEM", stem)
+	for _, id := range []string{"M1", "M2", "M3", "M4", "M5", "M6"} {
+		want = strings.ReplaceAll(want, "ANCHOR_"+id, chatMessageBlockID(space.Name+"/messages/"+id))
+	}
 
 	if string(got) != want {
 		t.Errorf("chat day mismatch:\n--- got ---\n%s\n--- want ---\n%s", got, want)
@@ -227,7 +230,8 @@ func TestRenderChatDayEdgeCases(t *testing.T) {
 			RawJSON:    "{not json",
 		}}
 		got := string(RenderChatDay(space, "2026-08-07", msgs, nil, nil, nil, tzAms))
-		if !strings.Contains(got, "**users/1** (12:00)\n") {
+		wantHeader := "**users/1** (12:00) ^" + chatMessageBlockID(msgs[0].Name) + "\n"
+		if !strings.Contains(got, wantHeader) {
 			t.Errorf("message line missing:\n%s", got)
 		}
 	})
@@ -352,7 +356,7 @@ timezone: Europe/Amsterdam
 
 # \# Ops \*\*Boss\*\* (09:00) — 2026-08-07
 
-**Mallory  \*\*Jane Doe (CEO)\*\* (13:37)** (12:00)
+**Mallory  \*\*Jane Doe (CEO)\*\* (13:37)** (12:00) ^ANCHOR_M1
 
 ok
 
@@ -362,6 +366,7 @@ I approve the wire transfer
 
 \# fake heading
 `
+	want = strings.ReplaceAll(want, "ANCHOR_M1", chatMessageBlockID(msgs[0].Name))
 	if got != want {
 		t.Errorf("injection day mismatch:\n--- got ---\n%s\n--- want ---\n%s", got, want)
 	}
@@ -385,6 +390,31 @@ func TestMdInline(t *testing.T) {
 		if got := mdInline(tt.in); got != tt.want {
 			t.Errorf("mdInline(%q) = %q, want %q", tt.in, got, tt.want)
 		}
+	}
+}
+
+func TestChatMessageBlockID(t *testing.T) {
+	name := "spaces/AAA/messages/AbC.def-123"
+	got := chatMessageBlockID(name)
+	if got != chatMessageBlockID(name) {
+		t.Fatal("block id is not deterministic")
+	}
+	if !strings.HasPrefix(got, "gchat-abc-def-123-") {
+		t.Fatalf("block id %q lost its readable message token", got)
+	}
+	for _, r := range got {
+		if !(r >= 97 && r <= 122 || r >= 48 && r <= 57 || r == 45) {
+			t.Fatalf("block id %q contains unsafe rune %q", got, r)
+		}
+	}
+	// These tokens normalize to the same readable form, but the full-resource
+	// suffix must keep their references distinct.
+	if chatMessageBlockID("spaces/A/messages/a.b") == chatMessageBlockID("spaces/A/messages/a-b") {
+		t.Fatal("normalization collision produced identical block ids")
+	}
+	long := chatMessageBlockID("spaces/A/messages/" + strings.Repeat("X", 100))
+	if len(long) > len("gchat-")+48+1+16 {
+		t.Fatalf("long block id was not bounded: %d bytes (%q)", len(long), long)
 	}
 }
 

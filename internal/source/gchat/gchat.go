@@ -59,7 +59,8 @@ type Connector struct {
 	limiter *ratelimit.Keyed
 	log     *slog.Logger
 	api     chatAPI
-	drive   driveAPI // nil unless mirror_drive_files is on
+	drive   driveAPI  // nil unless mirror_drive_files is on
+	people  peopleAPI // nil unless resolve_chat_names is on
 
 	// pol decides every attachment, twice: once from the message metadata
 	// (avoiding the download) and once over the real bytes. Never nil.
@@ -115,6 +116,7 @@ func newConnector(instanceID string, acct config.GoogleAccount, db *state.DB, wr
 		log:       logger.With("instance", instanceID),
 		api:       api,
 		drive:     driveAPI,
+		people:    o.people,
 		pol:       o.pol,
 		freeSpace: o.freeSpace,
 		now:       time.Now,
@@ -142,6 +144,9 @@ func (c *Connector) Check(ctx context.Context) error {
 func (c *Connector) Sync(ctx context.Context) error {
 	// attachments.run_budget is per pass, so the tally starts fresh here.
 	c.runBytes = 0
+	if _, err := c.db.SyncChatNameOverrides(c.src, c.acct.ChatNameOverrides); err != nil {
+		return storeFatal(err)
+	}
 	spaces, err := c.discoverSpaces(ctx)
 	if err != nil {
 		return fmt.Errorf("gchat: discover spaces: %w", err)
@@ -151,6 +156,9 @@ func (c *Connector) Sync(ctx context.Context) error {
 		if err := c.runItemStep(ctx, sp.Name, func() error { return c.syncSpace(ctx, sp) }); err != nil {
 			return err
 		}
+	}
+	if err := c.refreshSenderNames(ctx); err != nil {
+		return storeFatal(err)
 	}
 	if err := c.downloadAttachments(ctx); err != nil {
 		return err

@@ -78,7 +78,13 @@ go.mod.
 16. Outbound delivery is EXPLICIT only (`comms send`), never a daemon task. Drafts
     move from `<sending.root>/send` to `archived` only after remote acceptance is in
     `outgoing_messages`. Provider senders must reconcile `sending` rows by the stable
-    message key; a transport error must never cause a blind automatic duplicate.
+    message key; a transport error must never cause a blind automatic duplicate. `comms new`
+    creates files exclusively with 0600 permissions and leaves required content blank, so
+    an untouched generated draft is invalid and cannot be sent accidentally.
+17. Chat sender identity stays the canonical account-scoped `users/{id}` in message rows.
+    People API names and local overrides are display projections only; changes dirty every
+    affected day. Each rendered message has a stable Obsidian-safe block id derived from
+    the immutable Google message resource, never from sender name or message content.
 
 ## Style
 

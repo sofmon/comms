@@ -42,6 +42,7 @@ type Note struct {
 	Account       string            `yaml:"account"`
 	AccountLabel  string            `yaml:"account_label"`
 	MessageID     string            `yaml:"message_id"`
+	ThreadID      string            `yaml:"thread_id"`
 	Date          string            `yaml:"date"`
 	DateUTC       string            `yaml:"date_utc"`
 	From          []string          `yaml:"from"`

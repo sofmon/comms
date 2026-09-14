@@ -18,6 +18,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 
@@ -106,6 +107,13 @@ type GoogleAccount struct {
 	// account's OAuth scope set and therefore requires re-authorization.
 	SendEmail bool `toml:"send_email"`
 	SendChat  bool `toml:"send_chat"`
+
+	// ResolveChatNames enriches Chat's opaque users/{id} senders through the
+	// Google People API. It is opt-in because it adds directory.readonly to
+	// this account's OAuth grant. Overrides are local, account-scoped names
+	// for profiles Google cannot expose (external, deleted, or private).
+	ResolveChatNames  bool              `toml:"resolve_chat_names"`
+	ChatNameOverrides map[string]string `toml:"chat_name_overrides"`
 
 	IncludeDrafts    bool `toml:"include_drafts"`
 	MirrorDriveFiles bool `toml:"mirror_drive_files"`
@@ -494,6 +502,20 @@ func (c *Config) Validate() error {
 		if !g.Gmail && !g.Chat && !g.SendEmail && !g.SendChat {
 			errs = append(errs, fmt.Errorf("%s: nothing to archive or send — set gmail/chat for archiving and/or send_email/send_chat for sending, or delete the block", ref))
 		}
+		if (g.ResolveChatNames || len(g.ChatNameOverrides) > 0) && !g.Chat {
+			errs = append(errs, fmt.Errorf("%s: resolve_chat_names and chat_name_overrides require chat = true", ref))
+		}
+		overrideIDs := mapKeys(g.ChatNameOverrides)
+		slices.Sort(overrideIDs)
+		for _, userID := range overrideIDs {
+			name := g.ChatNameOverrides[userID]
+			if !validChatUserID(userID) {
+				errs = append(errs, fmt.Errorf("%s: chat_name_overrides key %q must have the form users/<id>", ref, userID))
+			}
+			if strings.TrimSpace(name) == "" || strings.ContainsAny(name, "\r\n") {
+				errs = append(errs, fmt.Errorf("%s: chat_name_overrides[%q] must be a non-empty single-line display name", ref, userID))
+			}
+		}
 		if g.Reactions {
 			errs = append(errs, fmt.Errorf("%s: reactions = true is not implemented in this version — remove the option or set it to false", ref))
 		}
@@ -509,6 +531,19 @@ func (c *Config) Validate() error {
 		errs = append(errs, errors.New("no accounts are enabled — configure archiving and/or sending on at least one [[google]] or [[fastmail]] block"))
 	}
 	return errors.Join(errs...)
+}
+
+func mapKeys[V any](m map[string]V) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	return keys
+}
+
+func validChatUserID(s string) bool {
+	return strings.HasPrefix(s, "users/") && len(s) > len("users/") &&
+		!strings.Contains(s[len("users/"):], "/") && !strings.ContainsAny(s, " \t\r\n")
 }
 
 // Instance is one configured source instance: a single account's single
@@ -879,6 +914,8 @@ gmail   = true
 chat    = true
 send_email = false             # true adds gmail.compose; re-authorize
 send_chat  = false             # true adds chat.messages.create; re-authorize
+resolve_chat_names = false     # true adds directory.readonly; enable People API and re-authorize
+# chat_name_overrides = { "users/123456789" = "Jane Doe" }
 include_drafts     = false
 mirror_drive_files = false      # true adds drive.readonly (re-run ` + "`comms auth google work`" + `)
 show_deleted       = false
@@ -895,6 +932,7 @@ gmail   = true
 chat    = true
 send_email = false
 send_chat  = false
+resolve_chat_names = false
 client_file = "~/.config/comms/google-client-personal.json"
 
 [[fastmail]]

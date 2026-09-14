@@ -8,7 +8,8 @@ outgoing messages through **Gmail**, **Google Chat** (Workspace), and **FastMail
 > transmits a draft to its configured mail or Chat provider. Before use, bring:
 >
 > - **your own Google Cloud OAuth client** (a Desktop-app client ID with the Gmail and
->   Google Chat APIs enabled) — see [Google setup](#google-setup-once-per-account);
+>   Google Chat APIs enabled, plus People API when resolving Chat names) — see
+>   [Google setup](#google-setup-once-per-account);
 > - **a FastMail API token**, if you archive a FastMail account — see
 >   [FastMail setup](#fastmail-setup-once-per-account);
 > - **a Google Workspace account** for Chat. The Chat API returns 403 on a consumer
@@ -65,6 +66,7 @@ comms auth google work       # one-time browser consent, per [[google]] account
 comms auth google personal   # …or `comms auth google --all` to do every one in turn
 comms auth fastmail fm       # paste that account's FastMail API token
 comms sync            # first backfill — Gmail can take hours; safe to interrupt/resume
+comms new gmail:work   # create a provider-correct outgoing draft to edit
 comms send --dry-run   # validate outgoing Markdown files without sending
 comms send             # explicitly send all valid drafts and archive successes
 comms run             # daemon; or install the launchd plist for autostart
@@ -125,6 +127,34 @@ If `[sending].root` is omitted, it defaults to `archive_root + "-outbox"`; with
 override is `COMMS_OUTBOX_ROOT`. The outbox must be a separate sibling tree, not
 inside the archive or spam tree.
 
+Create a draft from the configured account instead of copying a template by hand:
+
+```sh
+comms new gmail:work       # email through the Google account labelled work
+comms new fastmail:fm      # email through the FastMail account labelled fm
+comms new gchat:work       # Google Chat message
+```
+
+The command creates a collision-safe, timestamped `0600` file under `send/` and prints
+its full path. Required delivery fields and the body start empty, so an untouched template
+is deliberately rejected by `comms send`; edit it, run `comms send --dry-run`, then send.
+Only explicitly send-enabled instances are accepted.
+
+To reply to an incoming archived email, pass its Markdown file:
+
+```sh
+comms new gmail:work --reply ~/Archive/2026/09/05/received-message.md
+comms new fastmail:fm --reply ~/Archive/2026/09/05/received-message.md
+```
+
+The reply draft prefills the first usable `from` address, adds `Re:` when needed, and
+sets `in_reply_to` plus `references` from the archived `message_id`. For a Gmail note
+archived by the same Gmail instance, it also carries the Gmail `thread_id`. The original
+body is not copied; add the reply body and review every prefilled field before sending.
+If an older or malformed archive note has no usable Message-ID, the draft is still created
+and the command warns that provider conversation grouping may be unavailable. `--reply`
+is for email instances; Google Chat replies still use the `thread` field shown below.
+
 An email draft is Markdown with strict YAML frontmatter:
 
 ```markdown
@@ -145,9 +175,10 @@ The project is **ready**.
 ```
 
 `to`, `cc`, and `bcc` each accept one address or a YAML list; at least one recipient
-and a non-empty subject are required. Email bodies are sent as UTF-8 plain text, so
-the Markdown source remains readable but is not converted to HTML. Attachments are not
-yet supported in the outbound format.
+and a non-empty subject are required. `in_reply_to`, `references`, and `thread_id` are
+optional reply metadata normally written by `comms new --reply`. Email bodies are sent as
+UTF-8 plain text, so the Markdown source remains readable but is not converted to HTML.
+Attachments are not yet supported in the outbound format.
 
 A Google Chat draft names an existing space resource. `thread` is optional; include its
 full resource name to reply to an existing thread:
@@ -172,6 +203,12 @@ ID instead of blindly delivering it twice. Keep a draft's filename stable while 
 flight; use a different filename or content when intentionally sending a similar message
 again.
 
+Sending and incoming synchronization are separate operations. `comms send` immediately
+moves the exact draft into `[sending].root/archived`; the next `comms sync` also downloads
+the provider copy from Sent into the main `archive_root` for both Gmail and FastMail. Seeing
+both files is expected: one is the submitted source draft and the other is the message as
+stored by the mail provider. Running sync again is safe and does not duplicate that copy.
+
 ### Sending credentials
 
 - Gmail sending adds `gmail.compose`, because the crash-recovery protocol creates a
@@ -189,6 +226,7 @@ The tool talks to the Gmail and Chat APIs with your own OAuth client:
 
 1. [console.cloud.google.com](https://console.cloud.google.com) → create (or pick) a project.
 2. **APIs & Services → Library** → enable the **Gmail API** and the **Google Chat API**.
+   Also enable the **People API** when `resolve_chat_names = true`.
 3. **OAuth consent screen** → audience **Internal** (Workspace accounts; no verification,
    and refresh tokens don't expire). Note: a Workspace admin can block unlisted OAuth
    clients from the Chat scopes.
@@ -200,9 +238,56 @@ The tool talks to the Gmail and Chat APIs with your own OAuth client:
 One `[[google]]` block is one Google identity, and its single consent covers both its
 Gmail and its Chat. The scope set follows the block: `gmail = true` adds
 `gmail.readonly`, `chat = true` adds the three Chat read scopes, `send_email = true`
-adds `gmail.compose`, `send_chat = true` adds `chat.messages.create`, and
-`mirror_drive_files = true` adds `drive.readonly` — change any of them and `comms doctor`
-tells you to re-run `comms auth google <label>`.
+adds `gmail.compose`, `send_chat = true` adds `chat.messages.create`,
+`resolve_chat_names = true` adds `directory.readonly`, and `mirror_drive_files = true`
+adds `drive.readonly` — change any of them and `comms doctor` tells you to re-run
+`comms auth google <label>`.
+
+### Chat display names and message anchors
+
+Google Chat user-authentication responses can contain only an opaque sender such as
+`users/123456789`. To enrich those senders with Workspace profile display
+names, enable the People API in the Cloud project for that account and opt in:
+
+```toml
+[[google]]
+label = "work"
+account = "you@example.com"
+chat = true
+resolve_chat_names = true
+
+# Optional fallbacks for external, deleted, or private profiles:
+chat_name_overrides = { "users/123456789" = "Jane Doe" }
+```
+
+Then authorize the added scope and sync normally:
+
+```sh
+comms auth google work
+comms doctor
+comms sync --source gchat:work
+```
+
+Name lookup is best-effort: a People API failure never stops Chat archival. Comms keeps
+resolved and unresolved results in an account-scoped cache, refreshes them periodically,
+and falls back to an existing Chat membership name or the original `users/{id}`. A local
+override always wins for its account.
+
+Every archived message header also carries a stable block identifier derived from the
+immutable Google message resource:
+
+```markdown
+**Jane Doe** (09:15) ^gchat-u1-4d4afa86f12d1565
+```
+
+In Obsidian, copy that identifier into a block link such as
+`[[gchat-work_space_team-platform_9f8e7d6c#^gchat-u1-4d4afa86f12d1565]]`. The readable
+part may vary with the Google token, while the hash suffix prevents normalized tokens
+from colliding. The identifier stays unchanged when a display name or message body changes.
+
+On upgrade, the state migration marks existing Chat day projections dirty. The next normal
+`comms sync` re-renders them from local state with anchors and any resolved names; no
+`--full` re-download is required.
 
 ### Two accounts in different Workspace organizations
 
@@ -266,6 +351,8 @@ gmail   = true
 chat    = true
 send_email = false
 send_chat  = false
+resolve_chat_names = false
+# chat_name_overrides = { "users/123456789" = "Jane Doe" }
 include_drafts     = false
 mirror_drive_files = false
 show_deleted       = false
@@ -295,6 +382,8 @@ send_email = false
 | `[[google]] account` | — | The identity's email address; `comms doctor` verifies the token really belongs to it |
 | `[[google]] gmail` / `chat` | false | What this identity archives |
 | `[[google]] send_email` / `send_chat` | false | Explicit outbound opt-ins; add OAuth scopes and require `comms auth google <label>` again |
+| `[[google]] resolve_chat_names` | false | Resolve opaque Chat sender ids to display names through People API; adds `directory.readonly`, so enable People API and re-authorize |
+| `[[google]] chat_name_overrides` | `{}` | Account-scoped `users/{id}` to display-name fallbacks; requires `chat = true` |
 | `[[google]] include_drafts` | false | Drafts churn message ids; off by default |
 | `[[google]] mirror_drive_files` | false | Off: Drive-backed Chat attachments are linked, not downloaded (on adds the `drive.readonly` scope — re-run `comms auth google <label>`) |
 | `[[google]] show_deleted` | false | Keep "(message deleted)" tombstones in day files |
@@ -313,7 +402,7 @@ send_email = false
 
 At least one archive or send capability must be enabled. A `[[google]]` block with all of
 `gmail`, `chat`, `send_email`, and `send_chat` false is a configuration error, as is a
-duplicate label. The old single-account
+duplicate label. Chat name resolution and overrides require `chat = true`. The old single-account
 `[gmail]` / `[gchat]` / `[fastmail]` tables are rejected with a message naming the new
 format.
 

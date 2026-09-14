@@ -27,7 +27,7 @@ import (
 // and env variable appear in the text.
 const googleSetupHintFmt = `Google Cloud Console setup for account %[1]q (%[2]s):
   1. console.cloud.google.com → create (or pick) a project
-  2. APIs & Services → Library → enable the "Gmail API" and the "Google Chat API"
+  2. APIs & Services → Library → enable the "Gmail API" and the "Google Chat API"%[4]s
   3. OAuth consent screen → audience "Internal" (Workspace account; no
      verification and no 7-day token expiry). IMPORTANT for multiple
      accounts: an "Internal" client only accepts users of ITS OWN Workspace
@@ -43,7 +43,11 @@ const googleSetupHintFmt = `Google Cloud Console setup for account %[1]q (%[2]s)
 
 // googleSetup renders the walkthrough for one account.
 func googleSetup(acct config.GoogleAccount) string {
-	return fmt.Sprintf(googleSetupHintFmt, acct.Label, acct.Account, acct.ClientFilePath)
+	people := ""
+	if acct.ResolveChatNames {
+		people = `, plus the "People API"`
+	}
+	return fmt.Sprintf(googleSetupHintFmt, acct.Label, acct.Account, acct.ClientFilePath, people)
 }
 
 const fastmailSetupHintFmt = `FastMail token setup for account %[1]q (%[2]s):

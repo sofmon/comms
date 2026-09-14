@@ -58,7 +58,7 @@ func (f *fakeAPI) Do(req *jmap.Request) (*jmap.Response, error) {
 
 func fastmailDraft(t *testing.T) outbox.Draft {
 	t.Helper()
-	d, err := outbox.Parse("mail.md", []byte("---\ntype: email\naccount: fm\nto: Jane <jane@example.com>\nsubject: Hello\n---\nPlain text\n"))
+	d, err := outbox.Parse("mail.md", []byte("---\ntype: email\naccount: fm\nto: Jane <jane@example.com>\nsubject: Hello\nin_reply_to: <original@example.net>\nreferences: [<older@example.net>, <original@example.net>]\n---\nPlain text\n"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -83,6 +83,10 @@ func TestSendCreatesDraftAndSubmission(t *testing.T) {
 	}
 	if api.created.BodyValues["body"].Value != "Plain text" || !api.created.MailboxIDs["drafts"] {
 		t.Fatalf("created body/mailbox = %+v", api.created)
+	}
+	if len(api.created.InReplyTo) != 1 || api.created.InReplyTo[0] != "original@example.net" ||
+		len(api.created.References) != 2 || api.created.References[0] != "older@example.net" {
+		t.Fatalf("created reply headers = %+v", api.created)
 	}
 	sub := api.submission.Create["submission"]
 	if sub.EmailID != "email-1" || sub.IdentityID != "identity" || api.submission.OnSuccessUpdateEmail["#submission"] == nil {

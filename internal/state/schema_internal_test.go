@@ -147,6 +147,63 @@ func TestMigrateV2ToV3(t *testing.T) {
 	}
 }
 
+// TestMigrateV3ToV4 proves existing Chat projections are marked dirty so
+// display names and stable message anchors appear without re-downloading Chat.
+func TestMigrateV3ToV4(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "state.db")
+	raw, err := sql.Open("sqlite", "file:"+path+"?_pragma=journal_mode(WAL)")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for version, ddl := range []string{schemaSQL(), schemaV2SQL(), schemaV3SQL()} {
+		if _, err := raw.Exec(ddl); err != nil {
+			t.Fatalf("apply schema v%d: %v", version+1, err)
+		}
+	}
+	if _, err := raw.Exec(`
+		INSERT INTO chat_spaces
+			(source, space_name, space_type, display_name, display_slug, history_state, first_seen_at, last_synced_at)
+		VALUES (?,?,?,?,?,?,?,?)`,
+		"gchat:work", "spaces/AAA", "space", "Team", "team", "HISTORY_ON",
+		"2026-08-07T10:00:00Z", "2026-08-07T10:00:00Z"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := raw.Exec(`
+		INSERT INTO chat_messages
+			(source,msg_name,space_name,thread_name,sender_id,create_time,last_update_time,day_bucket,raw_json,edited,deleted,deleted_at)
+		VALUES (?,?,?,NULL,?,?,NULL,?,?,0,0,NULL)`,
+		"gchat:work", "spaces/AAA/messages/M1", "spaces/AAA", "users/1",
+		"2026-08-07T10:00:00Z", "2026-08-07", "{}"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := raw.Exec(`
+		INSERT INTO chat_day_files
+			(source,space_name,day_bucket,rel_path,dirty,dirty_seq,content_hash,rendered_at)
+		VALUES (?,?,?,?,0,7,?,?)`,
+		"gchat:work", "spaces/AAA", "2026-08-07", "2026/08/07/chat.md", "hash", "2026-08-07T10:01:00Z"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := raw.Exec(`PRAGMA user_version = 3`); err != nil {
+		t.Fatal(err)
+	}
+	if err := raw.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	db, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	files, err := db.DirtyDayFiles("gchat:work")
+	if err != nil || len(files) != 1 || files[0].DirtySeq != 8 {
+		t.Fatalf("migrated dirty files = %+v, %v; want one with seq 8", files, err)
+	}
+	if changed, err := db.SetChatPersonFromPeople("gchat:work", "users/1", "Jane Doe"); err != nil || !changed {
+		t.Fatalf("v4 chat_people unusable: changed=%v err=%v", changed, err)
+	}
+}
+
 func TestOpenRefusesANewerSchema(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "state.db")
 	db, err := Open(path)

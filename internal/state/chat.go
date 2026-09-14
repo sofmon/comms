@@ -424,6 +424,220 @@ func (d *DB) SetMember(source, space, userID, displayName string) error {
 	return nil
 }
 
+// Chat name sources distinguish automatic People API results from local
+// overrides and negative cache entries. The canonical identity remains user_id.
+const (
+	chatNamePeople     = "people"
+	chatNameOverride   = "override"
+	chatNameUnresolved = "unresolved"
+)
+
+// ChatPeopleDue returns distinct sender ids whose People profile name has
+// never been checked or is stale. Local overrides are never returned.
+func (d *DB) ChatPeopleDue(source string, peopleBefore, unresolvedBefore time.Time) ([]string, error) {
+	if err := requireInstance("list chat people due", source); err != nil {
+		return nil, err
+	}
+	rows, err := d.sql.Query(`
+		SELECT DISTINCT m.sender_id
+		FROM chat_messages m
+		LEFT JOIN chat_people p ON p.source = m.source AND p.user_id = m.sender_id
+		WHERE m.source = ? AND m.sender_id <> '' AND m.sender_id <> 'users/app'
+		  AND (p.user_id IS NULL
+		       OR (p.name_source = 'people' AND p.updated_at < ?)
+		       OR (p.name_source = 'unresolved' AND p.updated_at < ?))
+		ORDER BY m.sender_id`, source, fmtTime(peopleBefore), fmtTime(unresolvedBefore))
+	if err != nil {
+		return nil, fmt.Errorf("state: list chat people due %s: %w", source, err)
+	}
+	defer rows.Close()
+	var out []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, fmt.Errorf("state: list chat people due %s: %w", source, err)
+		}
+		out = append(out, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("state: list chat people due %s: %w", source, err)
+	}
+	return out, nil
+}
+
+// GetChatPersonName returns an account-scoped enriched display name. ok is
+// false for both an absent row and a cached unresolved profile.
+func (d *DB) GetChatPersonName(source, userID string) (name string, ok bool, err error) {
+	var ns sql.NullString
+	err = d.sql.QueryRow(`
+		SELECT display_name FROM chat_people WHERE source = ? AND user_id = ?`,
+		source, userID).Scan(&ns)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", false, nil
+	}
+	if err != nil {
+		return "", false, fmt.Errorf("state: get chat person %s/%s: %w", source, userID, err)
+	}
+	return ns.String, ns.Valid && ns.String != "", nil
+}
+
+// SetChatPersonFromPeople records one People API result. An empty name is a
+// retryable negative cache entry. A local override always wins. Any effective
+// name change dirties every day on which this sender appears, atomically with
+// the cache update.
+func (d *DB) SetChatPersonFromPeople(source, userID, displayName string) (bool, error) {
+	if err := requireInstance("set chat person", source); err != nil {
+		return false, err
+	}
+	tx, err := d.sql.Begin()
+	if err != nil {
+		return false, fmt.Errorf("state: set chat person %s/%s: %w", source, userID, err)
+	}
+	defer tx.Rollback()
+
+	var prev sql.NullString
+	var prevSource string
+	err = tx.QueryRow(`SELECT display_name, name_source FROM chat_people WHERE source = ? AND user_id = ?`, source, userID).Scan(&prev, &prevSource)
+	missing := errors.Is(err, sql.ErrNoRows)
+	if err != nil && !missing {
+		return false, fmt.Errorf("state: set chat person %s/%s: %w", source, userID, err)
+	}
+	if !missing && prevSource == chatNameOverride {
+		if err := tx.Commit(); err != nil {
+			return false, fmt.Errorf("state: set chat person %s/%s: commit: %w", source, userID, err)
+		}
+		return false, nil
+	}
+	nameSource := chatNamePeople
+	if displayName == "" {
+		nameSource = chatNameUnresolved
+	}
+	if _, err := tx.Exec(`
+		INSERT INTO chat_people (source, user_id, display_name, name_source, updated_at)
+		VALUES (?,?,?,?,?)
+		ON CONFLICT(source, user_id) DO UPDATE SET
+			display_name = excluded.display_name,
+			name_source = excluded.name_source,
+			updated_at = excluded.updated_at`,
+		source, userID, nullStr(displayName), nameSource, fmtTime(time.Now())); err != nil {
+		return false, fmt.Errorf("state: set chat person %s/%s: %w", source, userID, err)
+	}
+	changed := (!missing && prev.String != displayName) || (missing && displayName != "")
+	if changed {
+		if err := dirtySenderDaysTx(tx, source, userID); err != nil {
+			return false, err
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return false, fmt.Errorf("state: set chat person %s/%s: commit: %w", source, userID, err)
+	}
+	return changed, nil
+}
+
+// SyncChatNameOverrides makes the configured override map authoritative for
+// this account. Removing an override deletes it so the next People pass can
+// resolve the id again. Changed effective names dirty all affected days.
+func (d *DB) SyncChatNameOverrides(source string, overrides map[string]string) (int, error) {
+	if err := requireInstance("sync chat name overrides", source); err != nil {
+		return 0, err
+	}
+	tx, err := d.sql.Begin()
+	if err != nil {
+		return 0, fmt.Errorf("state: sync chat name overrides %s: %w", source, err)
+	}
+	defer tx.Rollback()
+
+	rows, err := tx.Query(`SELECT user_id, display_name FROM chat_people WHERE source = ? AND name_source = 'override'`, source)
+	if err != nil {
+		return 0, fmt.Errorf("state: sync chat name overrides %s: %w", source, err)
+	}
+	existing := make(map[string]string)
+	for rows.Next() {
+		var id string
+		var name sql.NullString
+		if err := rows.Scan(&id, &name); err != nil {
+			rows.Close()
+			return 0, fmt.Errorf("state: sync chat name overrides %s: %w", source, err)
+		}
+		existing[id] = name.String
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return 0, fmt.Errorf("state: sync chat name overrides %s: %w", source, err)
+	}
+	if err := rows.Close(); err != nil {
+		return 0, fmt.Errorf("state: sync chat name overrides %s: %w", source, err)
+	}
+
+	changed := 0
+	for id, oldName := range existing {
+		if _, keep := overrides[id]; keep {
+			continue
+		}
+		if _, err := tx.Exec(`DELETE FROM chat_people WHERE source = ? AND user_id = ? AND name_source = 'override'`, source, id); err != nil {
+			return 0, fmt.Errorf("state: remove chat name override %s/%s: %w", source, id, err)
+		}
+		if oldName != "" {
+			if err := dirtySenderDaysTx(tx, source, id); err != nil {
+				return 0, err
+			}
+			changed++
+		}
+	}
+
+	keys := make([]string, 0, len(overrides))
+	for id := range overrides {
+		keys = append(keys, id)
+	}
+	slices.Sort(keys)
+	for _, id := range keys {
+		name := overrides[id]
+		var prev sql.NullString
+		err := tx.QueryRow(`SELECT display_name FROM chat_people WHERE source = ? AND user_id = ?`, source, id).Scan(&prev)
+		missing := errors.Is(err, sql.ErrNoRows)
+		if err != nil && !missing {
+			return 0, fmt.Errorf("state: read chat name override %s/%s: %w", source, id, err)
+		}
+		if _, err := tx.Exec(`
+			INSERT INTO chat_people (source, user_id, display_name, name_source, updated_at)
+			VALUES (?,?,?,'override',?)
+			ON CONFLICT(source, user_id) DO UPDATE SET
+				display_name = excluded.display_name,
+				name_source = 'override',
+				updated_at = excluded.updated_at`,
+			source, id, name, fmtTime(time.Now())); err != nil {
+			return 0, fmt.Errorf("state: set chat name override %s/%s: %w", source, id, err)
+		}
+		if missing || prev.String != name {
+			if err := dirtySenderDaysTx(tx, source, id); err != nil {
+				return 0, err
+			}
+			changed++
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return 0, fmt.Errorf("state: sync chat name overrides %s: commit: %w", source, err)
+	}
+	return changed, nil
+}
+
+func dirtySenderDaysTx(tx *sql.Tx, source, userID string) error {
+	_, err := tx.Exec(`
+		UPDATE chat_day_files
+		SET dirty = 1, dirty_seq = dirty_seq + 1
+		WHERE source = ? AND EXISTS (
+			SELECT 1 FROM chat_messages m
+			WHERE m.source = chat_day_files.source
+			  AND m.space_name = chat_day_files.space_name
+			  AND m.day_bucket = chat_day_files.day_bucket
+			  AND m.sender_id = ?
+		)`, source, userID)
+	if err != nil {
+		return fmt.Errorf("state: dirty days for chat sender %s/%s: %w", source, userID, err)
+	}
+	return nil
+}
+
 // DayFile is one row of the chat day-file projection ledger.
 type DayFile struct {
 	Source      string // instance id that owns this projection

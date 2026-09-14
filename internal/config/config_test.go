@@ -94,8 +94,11 @@ func TestLoadDefaults(t *testing.T) {
 		t.Errorf("FastMailInterval = %v, want 5m", got)
 	}
 	g := cfg.Google[0]
-	if g.IncludeDrafts || g.MirrorDriveFiles || g.ShowDeleted || g.Reactions {
+	if g.IncludeDrafts || g.MirrorDriveFiles || g.ShowDeleted || g.Reactions || g.ResolveChatNames {
 		t.Errorf("boolean options should default to false: %+v", g)
+	}
+	if len(g.ChatNameOverrides) != 0 {
+		t.Errorf("ChatNameOverrides = %v, want empty", g.ChatNameOverrides)
 	}
 	if got, want := g.ClientFilePath, filepath.Join(cfgDir, "google-client.json"); got != want {
 		t.Errorf("ClientFilePath = %q, want the shared default %q", got, want)
@@ -109,6 +112,29 @@ func TestLoadDefaults(t *testing.T) {
 	}
 	if f.Token != "" {
 		t.Errorf("FastMail Token = %q, want empty without env", f.Token)
+	}
+}
+
+func TestChatNameOptions(t *testing.T) {
+	clearEnv(t)
+	t.Setenv("COMMS_CONFIG_DIR", t.TempDir())
+	cfg, err := Load(writeConfig(t, `
+[[google]]
+label = "work"
+account = "jane@example.com"
+chat = true
+resolve_chat_names = true
+chat_name_overrides = { "users/123" = "Jane Doe", "users/456" = "External Person" }
+`))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	g := cfg.Google[0]
+	if !g.ResolveChatNames {
+		t.Fatal("resolve_chat_names was not loaded")
+	}
+	if len(g.ChatNameOverrides) != 2 || g.ChatNameOverrides["users/123"] != "Jane Doe" {
+		t.Fatalf("chat_name_overrides = %v", g.ChatNameOverrides)
 	}
 }
 
@@ -394,6 +420,10 @@ func TestLoadErrors(t *testing.T) {
 		// silently ignoring the opt-in would be data loss relative to what the
 		// config promises, so Validate rejects it loudly.
 		{"reactions unimplemented", "[[google]]\nlabel=\"x\"\naccount=\"a@b.c\"\nchat=true\nreactions=true\n", "not implemented"},
+		{"name resolution without chat", "[[google]]\nlabel=\"x\"\naccount=\"a@b.c\"\ngmail=true\nresolve_chat_names=true\n", "require chat = true"},
+		{"name override without chat", "[[google]]\nlabel=\"x\"\naccount=\"a@b.c\"\ngmail=true\nchat_name_overrides={\"users/1\"=\"Jane\"}\n", "require chat = true"},
+		{"bad name override id", "[[google]]\nlabel=\"x\"\naccount=\"a@b.c\"\nchat=true\nchat_name_overrides={\"people/1\"=\"Jane\"}\n", "users/<id>"},
+		{"empty name override", "[[google]]\nlabel=\"x\"\naccount=\"a@b.c\"\nchat=true\nchat_name_overrides={\"users/1\"=\"   \"}\n", "non-empty single-line"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
